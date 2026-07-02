@@ -1,0 +1,29 @@
+.DS_Store
+
+# Local secrets
+cfo_agent_poc/.env
+cfo_agent_poc/.env.*
+!cfo_agent_poc/.env.example
+
+# Private finance data and captured bill images
+cfo_agent_poc/data/*.sqlite
+cfo_agent_poc/data/*.sqlite-*
+cfo_agent_poc/data/backups/
+cfo_agent_poc/data/mail_attachments/
+cfo_agent_poc/data/ocr_texts/
+cfo_agent_poc/web_app/data.json
+
+# Local runtimes and generated dependencies
+cfo_agent_poc/bin/
+cfo_agent_poc/web_app/node_modules/
+
+# Build outputs
+cfo_agent_poc/web_app/dist/
+.github-export/
+
+# Logs and caches
+*.log
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.vite/

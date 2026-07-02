@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Jeanz CFO Brain</title>
+    <link rel="icon" href="data:," />
+    <style>
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #070d0b;
+        color: #e9fff9;
+      }
+
+      .app-loading-screen,
+      #root:empty {
+        position: fixed;
+        inset: 0;
+        z-index: 120;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at 50% 50%, rgba(82, 241, 207, 0.075), transparent 30%),
+          #070d0b;
+      }
+
+      .loading-spinner,
+      #root:empty::before {
+        content: "";
+        width: 34px;
+        height: 34px;
+        border: 1px solid rgba(122, 255, 226, 0.18);
+        border-top-color: #52f1cf;
+        border-radius: 999px;
+        box-shadow: 0 0 28px rgba(82, 241, 207, 0.16);
+        animation: loadingSpin 0.9s linear infinite;
+      }
+
+      @keyframes loadingSpin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="app-loading-screen" aria-hidden="true">
+        <div class="loading-spinner"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
