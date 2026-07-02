@@ -436,6 +436,61 @@ function periodLabel(period = state.period) {
   return "全部";
 }
 
+// 快捷提问模板：文字随顶部选中的时段变化，避免提问时间词与所选时段语义不匹配。
+const QUICK_PROMPT_TEMPLATES = {
+  spend: {
+    label: { today: "今日支出", week: "本周支出", month: "本月支出", all: "全部支出" },
+    question: {
+      today: "我今天花了多少钱？",
+      week: "我本周花了多少钱？",
+      month: "我本月花了多少钱？",
+      all: "我一共花了多少钱？",
+    },
+  },
+  largest: {
+    question: {
+      today: "今天最大的支出是什么？",
+      week: "本周最大的支出是什么？",
+      month: "本月最大的支出是什么？",
+      all: "目前最大的一笔支出是什么？",
+    },
+  },
+  analysis: {
+    question: {
+      today: "分析下我今天的消费情况",
+      week: "分析下我本周的消费情况",
+      month: "分析下我本月的消费情况",
+      all: "分析下我目前整体的消费情况",
+    },
+  },
+  takeout: {
+    question: {
+      today: "我今天外卖点得多吗？",
+      week: "我本周外卖点得多吗？",
+      month: "我本月外卖点得多吗？",
+      all: "我最近外卖点得多吗？",
+    },
+  },
+  budget: {
+    question: {
+      today: "今日预算使用率是多少？",
+      week: "本周预算使用率是多少？",
+      month: "本月预算使用率是多少？",
+      all: "预算使用率是多少？",
+    },
+  },
+};
+
+function updateQuickPrompts(period = state.period) {
+  const key = ["today", "week", "month"].includes(period) ? period : "all";
+  document.querySelectorAll(".quick-prompts button").forEach((button) => {
+    const template = QUICK_PROMPT_TEMPLATES[button.dataset.promptKey];
+    if (!template) return;
+    if (template.question[key]) button.dataset.question = template.question[key];
+    if (template.label && template.label[key]) button.textContent = template.label[key];
+  });
+}
+
 function categoryLabel(category) {
   return categoryNames[category] || category || "未分类";
 }
@@ -1248,6 +1303,7 @@ function wireInteractions() {
       state.period = button.dataset.period;
       state.ledgerPage = 1;
       document.querySelectorAll(".period-btn").forEach((item) => item.classList.toggle("active", item === button));
+      updateQuickPrompts();
       renderAll();
       window.refreshCfoMotion?.({ scope: "global" });
     });
@@ -1293,6 +1349,7 @@ function wireInteractions() {
     window.refreshCfoMotion?.({ scope: "ledger" });
   });
 
+  updateQuickPrompts();
   document.querySelectorAll(".quick-prompts button").forEach((button) => {
     button.addEventListener("click", () => {
       const question = button.dataset.question;

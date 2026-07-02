@@ -78,11 +78,11 @@ function ChatHero() {
 
         <div id="chatMessages" className="chat-messages" aria-live="polite" />
         <div className="quick-prompts">
-          <button data-question="我今天花了多少钱？" type="button">今日支出</button>
-          <button data-question="这个月最大的支出是什么？" type="button">最大支出</button>
-          <button data-question="分析下我目前的消费情况" type="button">消费分析</button>
-          <button data-question="我最近点的外卖是不是太多？" type="button">外卖频率</button>
-          <button data-question="预算使用率是多少？" type="button">预算状态</button>
+          <button data-prompt-key="spend" data-question="我今天花了多少钱？" type="button">今日支出</button>
+          <button data-prompt-key="largest" data-question="今天最大的支出是什么？" type="button">最大支出</button>
+          <button data-prompt-key="analysis" data-question="分析下我今天的消费情况" type="button">消费分析</button>
+          <button data-prompt-key="takeout" data-question="我今天外卖点得多吗？" type="button">外卖频率</button>
+          <button data-prompt-key="budget" data-question="今日预算使用率是多少？" type="button">预算状态</button>
         </div>
         <form id="chatForm" className="chat-form">
           <label htmlFor="chatInput">输入问题</label>
