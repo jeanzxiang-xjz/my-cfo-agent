@@ -1541,6 +1541,19 @@ body.motion-ready .app-shell {
   background: var(--accent);
 }
 
+.message.user .period-chip {
+  display: inline-block;
+  margin-bottom: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(6, 17, 14, 0.72);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.6;
+}
+
 .quick-prompts {
   display: flex;
   flex-wrap: wrap;

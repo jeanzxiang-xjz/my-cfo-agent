@@ -936,7 +936,16 @@ function addMessage(role, text, options = {}) {
     node.classList.add("thinking-message");
     node.innerHTML = `<span class="shiny-text">${escapeHtml(text)}</span>`;
   } else {
-    setMessageContent(node, role, text, options);
+    if (options.periodTag) {
+      const chip = document.createElement("span");
+      chip.className = "period-chip";
+      chip.textContent = options.periodTag;
+      node.appendChild(chip);
+    }
+    const body = document.createElement("div");
+    body.className = "message-body";
+    setMessageContent(body, role, text, options);
+    node.appendChild(body);
   }
   container.appendChild(node);
   container.scrollTop = container.scrollHeight;
@@ -972,7 +981,7 @@ async function submitQuestion(question) {
   if (state.chatBusy) return;
   state.chatBusy = true;
   const priorHistory = [...state.chatHistory];
-  addMessage("user", question, { split: true });
+  addMessage("user", question, { split: true, periodTag: periodLabel(state.period) });
   const thinkingNode = addMessage("agent", "DeepSeek 正在读取账本并生成回答...", { save: false, shiny: true });
   try {
     const answer = await askCfoAgent(question, priorHistory);

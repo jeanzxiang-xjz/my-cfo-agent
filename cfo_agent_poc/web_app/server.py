@@ -348,6 +348,16 @@ def load_system_prompt() -> str:
     return "你是 Jeanz 的个人财务 CFO Agent。请基于提供的账本数据，用中文给出简洁、具体、可执行的回答。"
 
 
+PERIOD_LABELS = {
+    "today": "今日",
+    "week": "本周",
+    "month": "本月",
+    "last_month": "上月",
+    "year": "今年",
+    "all": "全部",
+}
+
+
 def compute_period_date_range(period: str) -> dict | None:
     now = datetime.now()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -411,13 +421,33 @@ def get_orientation_context(period: str, budgets: dict | None = None) -> dict:
     context: dict = {
         "today": datetime.now().date().isoformat(),
         "ui_selected_period": period,
+        "current_period_label": PERIOD_LABELS.get(period, "全部"),
         "user_budget_config": budgets or {},
         "data_range": data_range,
         "available_categories": cats,
     }
+
+    # 预注入选中时段的权威汇总：常见问题模型可直接引用、无需再调工具（省一轮 API）。
+    # 复用 _tool_query_spending_summary 保证口径与工具完全一致。
     period_range = compute_period_date_range(period)
-    if period_range:
-        context["period_date_range_hint"] = period_range
+    if period_range is None:  # "all"：回退到最早交易 ~ 明日零点
+        tomorrow = (datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                    + timedelta(days=1)).isoformat(timespec="seconds")
+        period_range = {
+            "start": data_range.get("earliest_transaction") or "1970-01-01T00:00:00",
+            "end": tomorrow,
+        }
+    context["current_period_date_range"] = period_range
+
+    query_args = {"start_date": period_range["start"], "end_date": period_range["end"]}
+    summary = _tool_query_spending_summary(query_args)
+    grouped = _tool_query_spending_summary({**query_args, "group_by": "category"})
+    if "error" not in summary:
+        top_categories = grouped.get("rows", [])[:5] if "error" not in grouped else []
+        context["current_period_summary"] = {
+            **summary.get("summary", {}),
+            "top_categories": top_categories,
+        }
     return context
 
 
