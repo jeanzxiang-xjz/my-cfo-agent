@@ -7,6 +7,8 @@
 ---
 
 ## 1. 一分钟看懂
+<img width="1654" height="2283" alt="localhost_8091_ (2)" src="https://github.com/user-attachments/assets/31f6f6fa-b6ac-4a15-9614-61aae6210943" />
+
 <img src="assets/cfo-architecture.svg" title="null" crop="0,0,1,1" id="aFWsm" class="ne-image"><img src="https://cdn.nlark.com/yuque/0/2026/png/22412697/1782388916874-95f6b5f8-57ee-42f1-a9ab-b0f364749b60.png" width="1200" title="" crop="0,0,1,1" id="ucc340db0" class="ne-image">
 
 它做的事情其实只有一句话：**消费发生后，你几乎不用动手，账单就自己变成了能分析、能追问的数据。**
