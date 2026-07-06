@@ -9,7 +9,7 @@
 ## 1. 一分钟看懂
 <img width="1654" height="2283" alt="localhost_8091_ (2)" src="https://github.com/user-attachments/assets/31f6f6fa-b6ac-4a15-9614-61aae6210943" />
 
-<img src="assets/cfo-architecture.svg" title="null" crop="0,0,1,1" id="aFWsm" class="ne-image"><img src="https://cdn.nlark.com/yuque/0/2026/png/22412697/1782388916874-95f6b5f8-57ee-42f1-a9ab-b0f364749b60.png" width="1200" title="" crop="0,0,1,1" id="ucc340db0" class="ne-image">
+<img src="https://cdn.nlark.com/yuque/0/2026/png/22412697/1782388916874-95f6b5f8-57ee-42f1-a9ab-b0f364749b60.png" width="1200" title="" crop="0,0,1,1" id="ucc340db0" class="ne-image">
 
 它做的事情其实只有一句话：**消费发生后，你几乎不用动手，账单就自己变成了能分析、能追问的数据。**
 
@@ -65,7 +65,10 @@
 
 ---
 
-## 4. 一笔钱怎么变成可提问的数据<img src="assets/cfo-data-flow.svg" title="null" crop="0,0,1,1" id="ra2ca" class="ne-image"><img src="https://cdn.nlark.com/yuque/0/2026/png/22412697/1782388937304-981d3900-4159-464c-bf8c-469fe23ce8a0.png" width="1200" title="" crop="0,0,1,1" id="u9c63968d" class="ne-image">
+## 4. 一笔钱怎么变成可提问的数据
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/22412697/1782388937304-981d3900-4159-464c-bf8c-469fe23ce8a0.png" width="1200" title="" crop="0,0,1,1" id="u9c63968d" class="ne-image">
+
 跟着一笔交易走一遍，就理解了整个系统：
 
 1. 你支付完成，打开微信或支付宝的账单详情页。
@@ -79,7 +82,8 @@
 
 这里有个关键设计：**第 6 步用「交易唯一 ID」做幂等写入**——同一笔交易重复同步也不会重复记账（详见 6.2）。
 
-把同步入库和对话问答这两条链路按时间展开，各个组件之间的消息往来是这样的：<img src="assets/cfo-sequence.svg" title="null" crop="0,0,1,1" id="cn0xp" class="ne-image"><img src="https://cdn.nlark.com/yuque/0/2026/png/22412697/1782389050295-9c137698-d11d-480f-aa75-9bfbe027c9ea.png" width="1200" title="" crop="0,0,1,1" id="u6adfa3ae" class="ne-image">
+把同步入库和对话问答这两条链路按时间展开，各个组件之间的消息往来是这样的：
+<img src="https://cdn.nlark.com/yuque/0/2026/png/22412697/1782389050295-9c137698-d11d-480f-aa75-9bfbe027c9ea.png" width="1200" title="" crop="0,0,1,1" id="u6adfa3ae" class="ne-image">
 
 ---
 
@@ -119,7 +123,7 @@
 每笔交易都有一个 `transaction_uid`：优先用账单里的交易单号生成；没有单号时，对「来源 + 金额 + 时间 + 商品 + 支付方式」做哈希。写库时按这个 ID 做 upsert，所以**同一封邮件、同一张截图重复处理，也不会重复记账**。
 
 ### 6.3 数据模型
-<img src="assets/cfo-data-model.svg" title="null" crop="0,0,1,1" id="BG3zh" class="ne-image"><img src="https://cdn.nlark.com/yuque/0/2026/png/22412697/1782389077715-34cc12fa-0f73-43b7-bd56-f43e9ace6afa.png" width="1200" title="" crop="0,0,1,1" id="uc29e08cb" class="ne-image">
+<img src="https://cdn.nlark.com/yuque/0/2026/png/22412697/1782389077715-34cc12fa-0f73-43b7-bd56-f43e9ace6afa.png" width="1200" title="" crop="0,0,1,1" id="uc29e08cb" class="ne-image">
 
 设计上把**原始证据**和**结构化结果**分开存：
 
