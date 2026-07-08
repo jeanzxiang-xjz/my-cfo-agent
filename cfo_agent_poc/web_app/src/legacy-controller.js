@@ -762,6 +762,14 @@ function renderHeader() {
   $("headerSummary").textContent = latest
     ? `已解析 ${state.transactions.length} 笔消费。最近一笔消费是 ${displayDate(latest.paid_at)} 的 ${latest.merchant || latest.thing || "消费"}，本月覆盖 ${categories.length} 个消费场景。`
     : "暂无可展示账单。";
+
+  const eyebrow = document.querySelector(".agent-eyebrow");
+  if (state.demo && eyebrow && !eyebrow.querySelector(".demo-badge")) {
+    const badge = document.createElement("span");
+    badge.className = "demo-badge";
+    badge.textContent = "DEMO DATA";
+    eyebrow.appendChild(badge);
+  }
 }
 
 function renderMetrics() {
@@ -1380,6 +1388,7 @@ async function loadSnapshot() {
   if (!response.ok) throw new Error(`data.json 加载失败：HTTP ${response.status}`);
   const data = await response.json();
   state.generatedAt = data.generated_at || null;
+  state.demo = Boolean(data.demo);
   state.transactions = (data.transactions || []).sort((a, b) => parseDate(b.paid_at) - parseDate(a.paid_at));
 }
 

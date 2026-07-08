@@ -27,3 +27,6 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .vite/
+
+# Local promo/marketing work (not part of the open-source project)
+local-tests/

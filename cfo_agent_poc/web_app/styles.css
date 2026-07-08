@@ -653,6 +653,15 @@ body.motion-ready .app-shell {
   letter-spacing: 0.16em;
 }
 
+.demo-badge {
+  margin-left: 12px;
+  padding: 2px 8px;
+  border: 1px solid var(--warning);
+  border-radius: 999px;
+  color: var(--warning);
+  letter-spacing: 0.12em;
+}
+
 .agent-hero h1 {
   max-width: 680px;
   color: var(--text-strong);

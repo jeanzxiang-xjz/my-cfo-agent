@@ -3,10 +3,30 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# --demo: run with a fictional seeded ledger, no mail/LLM config required
+DEMO_MODE=0
+SERVER_ARGS=()
+for arg in "$@"; do
+  if [[ "${arg}" == "--demo" ]]; then
+    DEMO_MODE=1
+  else
+    SERVER_ARGS+=("${arg}")
+  fi
+done
+
 if [[ -f cfo_agent_poc/.env ]]; then
   set -a
   source cfo_agent_poc/.env
   set +a
+fi
+
+if [[ "${DEMO_MODE}" == "1" ]]; then
+  export CFO_DEMO=1
+  export CFO_DB_PATH="${PWD}/cfo_agent_poc/data/cfo-demo.sqlite"
+  if [[ ! -f "${CFO_DB_PATH}" ]]; then
+    (cd cfo_agent_poc && python3 demo_seed.py)
+  fi
+  echo "Demo mode: serving fictional data from ${CFO_DB_PATH}"
 fi
 
 if [[ -f cfo_agent_poc/web_app/package.json ]]; then
@@ -40,4 +60,5 @@ fi
 HOST="${CFO_WEB_HOST:-127.0.0.1}"
 PORT="${CFO_WEB_PORT:-8091}"
 
-python3 cfo_agent_poc/web_app/server.py --host "${HOST}" --port "${PORT}" "$@"
+# ${arr[@]+...} 写法兼容 bash 3.2（macOS /bin/sh）在 set -u 下的空数组展开
+python3 cfo_agent_poc/web_app/server.py --host "${HOST}" --port "${PORT}" ${SERVER_ARGS[@]+"${SERVER_ARGS[@]}"}

@@ -21,7 +21,6 @@ from generate_snapshot import build_payload
 WEB_DIR = Path(__file__).resolve().parent
 ROOT_DIR = WEB_DIR.parents[0]
 FRONTEND_DIR = WEB_DIR / "dist" if (WEB_DIR / "dist" / "index.html").exists() else WEB_DIR
-DB_PATH = ROOT_DIR / "data" / "cfo.sqlite"
 
 
 def load_env_file(path: Path) -> None:
@@ -38,6 +37,10 @@ def load_env_file(path: Path) -> None:
 load_env_file(ROOT_DIR / ".env")
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+
+DB_PATH = Path(os.environ.get("CFO_DB_PATH") or ROOT_DIR / "data" / "cfo.sqlite")
+DEMO_MODE = os.environ.get("CFO_DEMO") == "1"
+OWNER_NAME = os.environ.get("CFO_OWNER_NAME", "").strip() or "用户"
 
 from mail_sync import DEFAULT_SUBJECT, connect_imap, process_mailbox_once_detailed, safe_logout
 
@@ -205,7 +208,7 @@ LOGIN_PAGE = """<!doctype html>
     <main>
       <div class="mark">C</div>
       <h1>Jeanz CFO Brain</h1>
-      <p>这是 Jeanz 的私人财务账本。请输入访问口令后继续。</p>
+      <p>这是 {owner} 的私人财务账本。请输入访问口令后继续。</p>
       <form method="post" action="/api/login">
         <label for="token">访问口令</label>
         <input id="token" name="token" type="password" autocomplete="current-password" autofocus />
@@ -344,8 +347,10 @@ def chat_context(period: str, budgets: dict | None = None) -> dict:
 
 def load_system_prompt() -> str:
     if PROMPT_PATH.exists():
-        return PROMPT_PATH.read_text(encoding="utf-8").strip()
-    return "你是 Jeanz 的个人财务 CFO Agent。请基于提供的账本数据，用中文给出简洁、具体、可执行的回答。"
+        prompt = PROMPT_PATH.read_text(encoding="utf-8").strip()
+    else:
+        prompt = "你是 {{OWNER_NAME}} 的个人财务 CFO Agent。请基于提供的账本数据，用中文给出简洁、具体、可执行的回答。"
+    return prompt.replace("{{OWNER_NAME}}", OWNER_NAME)
 
 
 PERIOD_LABELS = {
@@ -604,9 +609,79 @@ def execute_tool(name: str, args: dict) -> dict:
     return {"error": f"未知工具：{name}"}
 
 
+CATEGORY_LABELS = {
+    "coffee_tea": "咖啡/奶茶",
+    "food_delivery": "外卖/餐饮",
+    "parking": "停车",
+    "car_charging": "车辆充电",
+    "auto": "爱车养车",
+    "groceries": "超市便利",
+    "fruit": "水果",
+    "bakery": "烘焙",
+    "education": "教育考试",
+    "books": "图书",
+    "ecommerce": "网购",
+    "transport": "交通",
+    "healthcare": "医疗",
+    "investment": "投资理财",
+    "property": "物业生活",
+    "telecom": "通信充值",
+    "entertainment": "演出票务",
+    "credit_repayment": "信用借还",
+    "utilities": "水电燃缴费",
+    "stationery": "文具用品",
+    "uncategorized": "未分类",
+}
+
+
+def demo_answer(message: str, period: str) -> dict:
+    """Demo 模式且未配置 LLM Key 时的兜底回答：直接查询演示账本并模板化输出。"""
+    period_range = compute_period_date_range(period)
+    if period_range is None:
+        tomorrow = (datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                    + timedelta(days=1)).isoformat(timespec="seconds")
+        period_range = {"start": "1970-01-01T00:00:00", "end": tomorrow}
+    query_args = {"start_date": period_range["start"], "end_date": period_range["end"]}
+    summary = _tool_query_spending_summary(query_args).get("summary", {})
+    grouped = _tool_query_spending_summary({**query_args, "group_by": "category"})
+    label = PERIOD_LABELS.get(period, "全部")
+
+    lines = []
+    count = summary.get("outflow_transaction_count", 0)
+    total = summary.get("total_outflow_cny", 0)
+    lines.append(f"{label}共消费 {count} 笔，合计 ¥{total:.2f}。")
+
+    rows = grouped.get("rows", []) if "error" not in grouped else []
+    tops = [
+        f"{CATEGORY_LABELS.get(row['group'], row['group'] or '未分类')} ¥{row['outflow_cny']:.2f}（{row['outflow_count']} 笔）"
+        for row in rows[:3]
+        if row.get("outflow_cny")
+    ]
+    if tops:
+        lines.append("支出最高的场景：" + "、".join(tops) + "。")
+
+    max_out = summary.get("max_single_outflow_cny", 0)
+    if max_out:
+        hits = _tool_search_transactions({**query_args, "min_amount": max_out, "limit": 1}).get("transactions", [])
+        if hits:
+            tx = hits[0]
+            paid_day = (tx.get("paid_at") or "")[:10]
+            lines.append(f"最大单笔：¥{max_out:.2f}，{tx.get('merchant') or tx.get('thing') or '未知商户'}（{paid_day}）。")
+
+    lines.append("——以上是 Demo 模式的内置分析（当前展示的均为虚构数据）。配置 DEEPSEEK_API_KEY 后，可用自然语言向真实 LLM 追问任何账本问题。")
+    return {
+        "ok": True,
+        "model": "demo",
+        "answer": "\n\n".join(lines),
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
 def call_deepseek(message: str, period: str, history: list[dict], budgets: dict | None = None) -> dict:
     api_key = os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
+        if DEMO_MODE:
+            return demo_answer(message, period)
         return {
             "ok": False,
             "code": "missing_api_key",
@@ -790,6 +865,8 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def is_authenticated(self) -> bool:
+        if DEMO_MODE:
+            return True
         auth_header = self.headers.get("Authorization", "")
         if auth_header.startswith("Bearer ") and token_matches(auth_header.removeprefix("Bearer ").strip()):
             return True
@@ -799,7 +876,11 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
         return token_matches(cookies.get(AUTH_COOKIE_NAME))
 
     def send_login_page(self, error: str = "", status: HTTPStatus = HTTPStatus.OK) -> None:
-        body = LOGIN_PAGE.replace("{error}", html.escape(error)).encode("utf-8")
+        body = (
+            LOGIN_PAGE
+            .replace("{owner}", html.escape(OWNER_NAME))
+            .replace("{error}", html.escape(error))
+        ).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -842,7 +923,7 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
             self.send_login_page()
             return
 
-        if not access_token_configured():
+        if not access_token_configured() and not DEMO_MODE:
             self.send_login_page("服务端还没有配置 CFO_ACCESS_TOKEN，暂时不能公网访问。", status=HTTPStatus.SERVICE_UNAVAILABLE)
             return
 
@@ -898,7 +979,7 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             return
 
-        if not access_token_configured() or not self.is_authenticated():
+        if not DEMO_MODE and (not access_token_configured() or not self.is_authenticated()):
             self.send_unauthorized_json()
             return
 
