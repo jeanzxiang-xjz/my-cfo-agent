@@ -257,7 +257,6 @@ The server never dumps the whole database into the LLM. It builds a trimmed cont
 
 ## 📚 More docs
 
-- [Project introduction (a full walkthrough for first-time readers, incl. fields/schemas/parsing logic)](cfo_agent_poc/docs/INTRODUCTION.md)
 - [CFO agent system prompt](cfo_agent_poc/prompts/cfo_system_prompt.md)
 - [iPhone Shortcut setup guide](cfo_agent_poc/docs/shortcut-setup.md)
 

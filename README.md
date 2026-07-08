@@ -257,7 +257,6 @@ curl http://127.0.0.1:8091/health
 
 ## 📚 更多文档
 
-- [项目介绍（面向初次接触者的完整导读，含字段、表结构、解析逻辑）](cfo_agent_poc/docs/INTRODUCTION.md)
 - [CFO Agent 系统提示词](cfo_agent_poc/prompts/cfo_system_prompt.md)
 - [iPhone 快捷指令搭建指南](cfo_agent_poc/docs/shortcut-setup.md)
 
