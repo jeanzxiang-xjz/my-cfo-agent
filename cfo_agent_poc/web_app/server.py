@@ -6,6 +6,7 @@ import http.cookies
 import json
 import os
 import secrets
+import sqlite3
 import sys
 import urllib.error
 import urllib.request
@@ -43,6 +44,8 @@ DEMO_MODE = os.environ.get("CFO_DEMO") == "1"
 OWNER_NAME = os.environ.get("CFO_OWNER_NAME", "").strip() or "用户"
 
 from mail_sync import DEFAULT_SUBJECT, connect_imap, process_mailbox_once_detailed, safe_logout
+from bill_store import ensure_bill_tables
+from classification_service import start_background_enrichment
 
 PROMPT_PATH = ROOT_DIR / "prompts" / "cfo_system_prompt.md"
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
@@ -57,6 +60,7 @@ CFO_ACCESS_TOKEN = os.environ.get("CFO_ACCESS_TOKEN", "").strip()
 AUTH_COOKIE_NAME = "cfo_session"
 MAX_REQUEST_BODY_BYTES = int(os.environ.get("CFO_MAX_REQUEST_BODY_BYTES", "12000"))
 MAX_CHAT_MESSAGE_CHARS = int(os.environ.get("CFO_MAX_CHAT_MESSAGE_CHARS", "600"))
+CLASSIFICATION_TIMEOUT_SECONDS = float(os.environ.get("CFO_CLASSIFICATION_TIMEOUT_SECONDS", "12"))
 
 TOOL_DEFINITIONS = [
     {
@@ -630,6 +634,11 @@ CATEGORY_LABELS = {
     "credit_repayment": "信用借还",
     "utilities": "水电燃缴费",
     "stationery": "文具用品",
+    "digital_services": "数字服务",
+    "general_shopping": "日常购物",
+    "leisure_travel": "旅行休闲",
+    "lottery": "彩票",
+    "personal_transfer": "个人转账",
     "uncategorized": "未分类",
 }
 
@@ -800,6 +809,26 @@ def transaction_count() -> int:
     return len(build_payload().get("transactions", []))
 
 
+def ensure_database_schema() -> None:
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        ensure_bill_tables(conn)
+    finally:
+        conn.close()
+
+
+def trigger_background_classification() -> bool:
+    if DEMO_MODE:
+        return False
+    return start_background_enrichment(
+        DB_PATH,
+        api_key=os.environ.get("DEEPSEEK_API_KEY"),
+        base_url=DEEPSEEK_BASE_URL,
+        model=DEEPSEEK_MODEL,
+        timeout=CLASSIFICATION_TIMEOUT_SECONDS,
+    )
+
+
 def sync_mail_once() -> dict:
     host = os.environ.get("CFO_MAIL_IMAP_HOST", "imap.qq.com")
     user = os.environ.get("CFO_MAIL_USER")
@@ -831,6 +860,7 @@ def sync_mail_once() -> dict:
         safe_logout(client)
 
     after_count = transaction_count()
+    classification_started = trigger_background_classification()
     finished_at = datetime.now()
     return {
         "ok": True,
@@ -847,6 +877,7 @@ def sync_mail_once() -> dict:
         "transactions_before": before_count,
         "transactions_after": after_count,
         "new_transactions": max(after_count - before_count, 0),
+        "classification_started": classification_started,
         "items": detail["items"][-12:],
         "generated_at": datetime.now().isoformat(timespec="seconds"),
     }
@@ -1028,6 +1059,8 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8091)
     args = parser.parse_args()
 
+    ensure_database_schema()
+    trigger_background_classification()
     server = ThreadingHTTPServer((args.host, args.port), CFORequestHandler)
     print(f"Serving CFO web app at http://{args.host}:{args.port}/")
     server.serve_forever()

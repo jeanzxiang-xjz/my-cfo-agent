@@ -25,6 +25,11 @@ const categoryNames = {
   credit_repayment: "信用借还",
   utilities: "水电燃缴费",
   stationery: "文具用品",
+  digital_services: "数字服务",
+  general_shopping: "日常购物",
+  leisure_travel: "旅行休闲",
+  lottery: "彩票",
+  personal_transfer: "个人转账",
   uncategorized: "未分类",
 };
 
@@ -68,6 +73,7 @@ let state = {
   budgets: loadBudgetConfig(),
   trendMode: "day",
   activeTrendSeries: [],
+  classificationPendingCount: 0,
 };
 
 function $(id) {
@@ -956,7 +962,7 @@ function renderTransactions() {
                 <div class="transaction-title">${escapeHtml(title)}</div>
                 <div class="transaction-meta">${escapeHtml(thing)}</div>
               </div>
-              <div class="transaction-chip">${escapeHtml(categoryLabel(tx.category))}</div>
+              <div class="transaction-chip">${escapeHtml(tx.classification_status === "pending" ? "识别中" : categoryLabel(tx.category))}</div>
               <div class="transaction-source">${escapeHtml(source)}</div>
               <div class="transaction-amount">${escapeHtml(formatMoney(tx.amount))}</div>
             </div>
@@ -1089,7 +1095,7 @@ function renderSyncItems(items = []) {
             </div>
             <div>
               <div class="sync-item-amount">${escapeHtml(formatMoney(item.amount))}</div>
-              <div class="sync-item-category">${escapeHtml(categoryLabel(item.category))}</div>
+              <div class="sync-item-category">${escapeHtml(item.classification_status === "pending" ? "识别中" : categoryLabel(item.category))}</div>
             </div>
           </div>
         `)
@@ -1135,6 +1141,7 @@ async function syncMailData() {
       : "没有发现新的未读账单";
     const meta = `扫描 ${payload.candidate_count} 封候选邮件，命中 ${payload.matched_messages} 封，处理 ${payload.processed_attachments} 个附件，用时 ${payload.duration_seconds}s。`;
     setSyncModalState("success", title, meta);
+    refreshPendingClassifications();
   } catch (error) {
     renderSyncMetrics({ candidate_count: 0, matched_messages: 0, processed_attachments: 0, new_transactions: 0 });
     $("syncFinishedAt").textContent = "失败";
@@ -1145,6 +1152,15 @@ async function syncMailData() {
     $("startSyncButton").disabled = false;
     $("openSyncModal").disabled = false;
     $("startSyncButton").textContent = "重新同步";
+  }
+}
+
+async function refreshPendingClassifications(maxAttempts = 10) {
+  for (let attempt = 0; attempt < maxAttempts && state.classificationPendingCount > 0; attempt += 1) {
+    await new Promise((resolve) => window.setTimeout(resolve, 1500));
+    await loadSnapshot();
+    renderAll();
+    if (!$('trendModal').hidden) renderTrendModal();
   }
 }
 
@@ -1389,6 +1405,7 @@ async function loadSnapshot() {
   const data = await response.json();
   state.generatedAt = data.generated_at || null;
   state.demo = Boolean(data.demo);
+  state.classificationPendingCount = Number(data.classification_pending_count || 0);
   state.transactions = (data.transactions || []).sort((a, b) => parseDate(b.paid_at) - parseDate(a.paid_at));
 }
 

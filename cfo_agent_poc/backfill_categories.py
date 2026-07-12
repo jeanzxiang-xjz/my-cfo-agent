@@ -1,80 +1,302 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter
+import json
+import sqlite3
+from dataclasses import asdict
+from datetime import datetime
+from pathlib import Path
 
-from bill_store import connect, detect_category_and_thing
-
-
-def build_haystack(row: dict) -> str:
-    return "\n".join(
-        str(row.get(key) or "")
-        for key in ["merchant", "platform", "product", "payment_method", "raw_text"]
+try:
+    from cfo_agent_poc.bill_store import (
+        APP_DB,
+        ParsedBill,
+        apply_persisted_classification,
+        ensure_bill_tables,
+        is_generic_merchant_label,
+        is_stable_merchant,
+        normalize_merchant_key,
+        parse_bill_text,
+        remember_merchant_classification,
+    )
+except ModuleNotFoundError:  # Supports direct execution from cfo_agent_poc.
+    from bill_store import (
+        APP_DB,
+        ParsedBill,
+        apply_persisted_classification,
+        ensure_bill_tables,
+        is_generic_merchant_label,
+        is_stable_merchant,
+        normalize_merchant_key,
+        parse_bill_text,
+        remember_merchant_classification,
     )
 
 
-def backfill_categories(dry_run: bool = False) -> list[dict]:
-    conn = connect()
-    conn.row_factory = None
-    columns = [
-        "transaction_uid",
-        "merchant",
-        "platform",
-        "product",
-        "payment_method",
-        "raw_text",
-    ]
-    rows = conn.execute(
-        f"""
-        select {", ".join(columns)}
-        from transactions
-        where category = 'uncategorized'
-        order by paid_at desc
-        """
-    ).fetchall()
+FACT_FIELDS = (
+    "source",
+    "payment_app",
+    "amount",
+    "direction",
+    "status",
+    "paid_at",
+    "merchant",
+    "platform",
+    "thing",
+    "category",
+    "product",
+    "payment_method",
+    "bank_name",
+    "card_type",
+    "card_last4",
+    "acquirer",
+    "clearing_org",
+    "transaction_id",
+    "merchant_order_id",
+    "confidence",
+)
 
-    changes: list[dict] = []
-    for values in rows:
-        row = dict(zip(columns, values))
-        category, thing = detect_category_and_thing(build_haystack(row), row.get("product"))
-        if category == "uncategorized":
-            continue
-        changes.append({
-            "transaction_uid": row["transaction_uid"],
-            "merchant": row.get("merchant") or "",
-            "product": row.get("product") or "",
-            "category": category,
-            "thing": thing,
-        })
 
-    if not dry_run and changes:
-        conn.executemany(
-            """
-            update transactions
-            set category = ?, thing = coalesce(?, thing)
-            where transaction_uid = ? and category = 'uncategorized'
-            """,
-            [(item["category"], item["thing"], item["transaction_uid"]) for item in changes],
-        )
-        conn.commit()
-    conn.close()
+def _integrity_check(conn: sqlite3.Connection) -> None:
+    result = conn.execute("pragma integrity_check").fetchone()[0]
+    if result != "ok":
+        raise RuntimeError(f"SQLite integrity check failed: {result}")
+
+
+def _backup_database(conn: sqlite3.Connection, backup_dir: Path) -> Path:
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    path = backup_dir / f"cfo-before-reprocess-{stamp}.sqlite"
+    destination = sqlite3.connect(path)
+    try:
+        conn.backup(destination)
+        _integrity_check(destination)
+    finally:
+        destination.close()
+    return path
+
+
+def _manual_overrides(row: sqlite3.Row, parsed: ParsedBill) -> dict[str, str | None]:
+    overrides: dict[str, str | None] = {}
+    old_merchant = row["merchant"]
+    if (
+        old_merchant
+        and old_merchant != parsed.merchant
+        and not is_generic_merchant_label(old_merchant)
+    ):
+        overrides["merchant"] = old_merchant
+        if row["thing"] != parsed.thing and row["thing"]:
+            overrides["thing"] = row["thing"]
+    if row["category"] and row["category"] != "uncategorized" and row["category"] != parsed.category:
+        overrides["category"] = row["category"]
+        if row["thing"]:
+            overrides["thing"] = row["thing"]
+    return overrides
+
+
+def _apply_inline_overrides(parsed: ParsedBill, overrides: dict[str, str | None]) -> None:
+    for field in ("merchant", "thing", "category", "product"):
+        if field in overrides:
+            setattr(parsed, field, overrides[field])
+    if "category" in overrides:
+        parsed.category_confidence = 1.0
+        parsed.classification_source = "manual_override"
+        parsed.classification_status = "resolved"
+        parsed.classification_reason = "preserved_existing_value"
+
+
+def _changed_fields(row: sqlite3.Row, parsed: ParsedBill) -> dict[str, dict]:
+    changes: dict[str, dict] = {}
+    parsed_values = asdict(parsed)
+    for field in ("transaction_uid", *FACT_FIELDS):
+        old = row[field]
+        new = parsed_values[field]
+        if old != new:
+            changes[field] = {"old": old, "new": new}
     return changes
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Backfill uncategorized CFO transactions using current category rules.")
-    parser.add_argument("--dry-run", action="store_true", help="Print planned changes without updating SQLite.")
-    args = parser.parse_args()
+def _load_rows(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute(
+        """
+        select t.*
+        from transactions t
+        where t.raw_capture_hash is not null
+        order by t.paid_at, t.created_at
+        """
+    ).fetchall()
 
-    changes = backfill_categories(dry_run=args.dry_run)
-    counter = Counter(item["category"] for item in changes)
-    mode = "DRY RUN" if args.dry_run else "UPDATED"
-    print(f"{mode}: {len(changes)} transaction(s)")
-    for category, count in sorted(counter.items()):
-        print(f"  {category}: {count}")
-    for item in changes:
-        merchant = item["merchant"] or item["product"] or item["transaction_uid"]
-        print(f"- {item['transaction_uid']} -> {item['category']} / {item['thing'] or '-'} / {merchant}")
+
+def _write_overrides(
+    conn: sqlite3.Connection,
+    raw_capture_hash: str,
+    overrides: dict[str, str | None],
+) -> None:
+    now = datetime.now().isoformat(timespec="seconds")
+    conn.executemany(
+        """
+        insert into transaction_overrides (raw_capture_hash, field, value, created_at)
+        values (?, ?, ?, ?)
+        on conflict(raw_capture_hash, field) do update set value = excluded.value
+        """,
+        [(raw_capture_hash, field, value, now) for field, value in overrides.items()],
+    )
+
+
+def _update_transaction(conn: sqlite3.Connection, old_uid: str, capture_hash: str, parsed: ParsedBill) -> bool:
+    duplicate = conn.execute(
+        "select raw_capture_hash from transactions where transaction_uid = ? and transaction_uid <> ?",
+        (parsed.transaction_uid, old_uid),
+    ).fetchone()
+    if duplicate:
+        conn.execute("delete from transactions where transaction_uid = ?", (old_uid,))
+        return False
+
+    conn.execute(
+        """
+        update transactions set
+            transaction_uid = ?, source = ?, payment_app = ?, amount = ?, direction = ?, status = ?,
+            paid_at = ?, merchant = ?, platform = ?, thing = ?, category = ?, product = ?,
+            payment_method = ?, bank_name = ?, card_type = ?, card_last4 = ?, acquirer = ?,
+            clearing_org = ?, transaction_id = ?, merchant_order_id = ?, confidence = ?,
+            classification_source = ?, classification_confidence = ?, classification_status = ?,
+            classification_reason = ?, parse_warnings = ?, raw_text = ?
+        where raw_capture_hash = ? and transaction_uid = ?
+        """,
+        (
+            parsed.transaction_uid,
+            parsed.source,
+            parsed.payment_app,
+            parsed.amount,
+            parsed.direction,
+            parsed.status,
+            parsed.paid_at,
+            parsed.merchant,
+            parsed.platform,
+            parsed.thing,
+            parsed.category,
+            parsed.product,
+            parsed.payment_method,
+            parsed.bank_name,
+            parsed.card_type,
+            parsed.card_last4,
+            parsed.acquirer,
+            parsed.clearing_org,
+            parsed.transaction_id,
+            parsed.merchant_order_id,
+            parsed.confidence,
+            parsed.classification_source,
+            parsed.category_confidence,
+            parsed.classification_status,
+            parsed.classification_reason,
+            json.dumps(parsed.parse_warnings, ensure_ascii=False),
+            parsed.raw_text,
+            capture_hash,
+            old_uid,
+        ),
+    )
+    return True
+
+
+def _rebuild_memory(conn: sqlite3.Connection) -> None:
+    rows = conn.execute(
+        """
+        select merchant, category, thing, max(classification_confidence) as confidence
+        from transactions
+        where classification_status = 'resolved' and category not in ('uncategorized', 'personal_transfer')
+        group by merchant, category, thing
+        """
+    ).fetchall()
+    grouped: dict[str, list[sqlite3.Row]] = {}
+    for row in rows:
+        if not is_stable_merchant(row["merchant"]):
+            continue
+        grouped.setdefault(normalize_merchant_key(row["merchant"]) or "", []).append(row)
+    for candidates in grouped.values():
+        if len({row["category"] for row in candidates}) != 1:
+            continue
+        row = max(candidates, key=lambda item: float(item["confidence"] or 0))
+        remember_merchant_classification(
+            conn,
+            merchant=row["merchant"],
+            category=row["category"],
+            thing=row["thing"],
+            confidence=float(row["confidence"] or 0.9),
+            source="ledger_history",
+        )
+
+
+def reprocess_ledger(
+    db_path: str | Path = APP_DB,
+    *,
+    apply: bool = False,
+    backup_dir: str | Path | None = None,
+) -> dict:
+    path = Path(db_path)
+    uri = f"file:{path}?mode={'rw' if apply else 'ro'}"
+    conn = sqlite3.connect(uri, uri=True)
+    conn.row_factory = sqlite3.Row
+    _integrity_check(conn)
+    backup_path: Path | None = None
+    if apply:
+        backup_path = _backup_database(conn, Path(backup_dir or path.parent / "backups"))
+        ensure_bill_tables(conn)
+
+    rows = _load_rows(conn)
+    details: list[dict] = []
+    pending = 0
+    for row in rows:
+        parsed = parse_bill_text(
+            row["raw_text"],
+            source=row["source"],
+            source_hint=row["payment_app"] or row["source"],
+        )
+        overrides = _manual_overrides(row, parsed)
+        _apply_inline_overrides(parsed, overrides)
+        if parsed.classification_status == "pending":
+            pending += 1
+        changes = _changed_fields(row, parsed)
+        if changes:
+            details.append({
+                "raw_capture_hash": row["raw_capture_hash"],
+                "old_transaction_uid": row["transaction_uid"],
+                "new_transaction_uid": parsed.transaction_uid,
+                "changes": changes,
+                "overrides": overrides,
+            })
+        if not apply:
+            continue
+        if overrides:
+            _write_overrides(conn, row["raw_capture_hash"], overrides)
+        parsed = apply_persisted_classification(conn, parsed, row["raw_capture_hash"])
+        _update_transaction(conn, row["transaction_uid"], row["raw_capture_hash"], parsed)
+
+    if apply:
+        _rebuild_memory(conn)
+        conn.commit()
+        _integrity_check(conn)
+    final_count = conn.execute("select count(*) from transactions").fetchone()[0]
+    conn.close()
+    return {
+        "mode": "apply" if apply else "dry-run",
+        "database": str(path),
+        "backup_path": str(backup_path) if backup_path else None,
+        "scanned": len(rows),
+        "changed": len(details),
+        "pending": pending,
+        "final_count": final_count,
+        "details": details,
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Audit and safely reprocess CFO transactions.")
+    parser.add_argument("--db", default=str(APP_DB))
+    parser.add_argument("--apply", action="store_true", help="Apply changes after creating a verified backup.")
+    parser.add_argument("--backup-dir")
+    args = parser.parse_args()
+    report = reprocess_ledger(args.db, apply=args.apply, backup_dir=args.backup_dir)
+    print(json.dumps(report, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

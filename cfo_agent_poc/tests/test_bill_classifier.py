@@ -90,3 +90,25 @@ class LocalClassificationTests(unittest.TestCase):
         self.assertEqual(result.category, "uncategorized")
         self.assertEqual(result.source, "none")
         self.assertEqual(result.status, "pending")
+
+    def test_specific_lottery_signal_beats_personal_qr_fallback(self) -> None:
+        result = classify_locally(
+            merchant="扫二维码付款-给示例体彩店",
+            product=None,
+            platform=None,
+            payment_app="wechat",
+            text="扫二维码付款-给示例体彩店",
+        )
+
+        self.assertEqual(result.category, "lottery")
+
+    def test_pickle_shop_is_treated_as_grocery_food_purchase(self) -> None:
+        result = classify_locally(
+            merchant="示例泡菜店",
+            product="收银台订单",
+            platform=None,
+            payment_app="wechat",
+            text="",
+        )
+
+        self.assertEqual(result.category, "groceries")

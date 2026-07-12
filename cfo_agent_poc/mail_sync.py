@@ -144,6 +144,7 @@ def process_mailbox_once_detailed(
                 "amount": parsed.amount,
                 "merchant": parsed.merchant,
                 "category": parsed.category,
+                "classification_status": parsed.classification_status,
                 "paid_at": parsed.paid_at,
                 "transaction_uid": parsed.transaction_uid,
             })

@@ -16,8 +16,29 @@ OUT_PATH = Path(__file__).resolve().parent / "data.json"
 def build_payload() -> dict:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    columns = {row[1] for row in conn.execute("pragma table_info(transactions)")}
+    classification_source = (
+        "classification_source"
+        if "classification_source" in columns
+        else "case when category = 'uncategorized' then 'none' else 'legacy' end as classification_source"
+    )
+    classification_confidence = (
+        "classification_confidence"
+        if "classification_confidence" in columns
+        else "0 as classification_confidence"
+    )
+    classification_status = (
+        "classification_status"
+        if "classification_status" in columns
+        else "case when category = 'uncategorized' then 'pending' else 'resolved' end as classification_status"
+    )
+    classification_reason = (
+        "classification_reason"
+        if "classification_reason" in columns
+        else "null as classification_reason"
+    )
     rows = conn.execute(
-        """
+        f"""
         select
             transaction_uid,
             payment_app,
@@ -34,7 +55,11 @@ def build_payload() -> dict:
             bank_name,
             card_type,
             card_last4,
-            confidence
+            confidence,
+            {classification_source},
+            {classification_confidence},
+            {classification_status},
+            {classification_reason}
         from transactions
         where paid_at is not null
         order by paid_at desc
@@ -45,6 +70,9 @@ def build_payload() -> dict:
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "demo": DEMO_MODE,
+        "classification_pending_count": sum(
+            1 for row in rows if row["classification_status"] == "pending"
+        ),
         "transactions": [dict(row) for row in rows],
     }
 

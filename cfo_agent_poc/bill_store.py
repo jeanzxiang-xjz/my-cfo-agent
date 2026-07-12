@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import sqlite3
+import unicodedata
 from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -12,9 +13,14 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from cfo_agent_poc.bill_classifier import LOCAL_CATEGORY_RULES, classify_locally, detect_category_and_thing
+    from cfo_agent_poc.bill_classifier import (
+        ClassificationResult,
+        LOCAL_CATEGORY_RULES,
+        classify_locally,
+        detect_category_and_thing,
+    )
 except ModuleNotFoundError:  # Supports direct execution as cfo_agent_poc/bill_store.py.
-    from bill_classifier import LOCAL_CATEGORY_RULES, classify_locally, detect_category_and_thing
+    from bill_classifier import ClassificationResult, LOCAL_CATEGORY_RULES, classify_locally, detect_category_and_thing
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -65,6 +71,9 @@ class ParsedBill:
     thing: str | None
     category: str
     category_confidence: float
+    classification_source: str
+    classification_status: str
+    classification_reason: str | None
     product: str | None
     payment_method: str | None
     bank_name: str | None
@@ -118,7 +127,12 @@ def ensure_bill_tables(conn: sqlite3.Connection) -> None:
             confidence real not null,
             raw_capture_hash text,
             raw_text text not null,
-            created_at text not null
+            created_at text not null,
+            classification_source text not null default 'legacy',
+            classification_confidence real not null default 0,
+            classification_status text not null default 'resolved',
+            classification_reason text,
+            parse_warnings text not null default '[]'
         )
         """
     )
@@ -130,7 +144,43 @@ def ensure_bill_tables(conn: sqlite3.Connection) -> None:
             "card_type": "text",
             "card_last4": "text",
             "clearing_org": "text",
+            "classification_source": "text not null default 'legacy'",
+            "classification_confidence": "real not null default 0",
+            "classification_status": "text not null default 'resolved'",
+            "classification_reason": "text",
+            "parse_warnings": "text not null default '[]'",
         },
+    )
+    conn.execute(
+        """
+        create table if not exists merchant_category_memory (
+            merchant_key text primary key,
+            merchant text not null,
+            category text not null,
+            thing text,
+            confidence real not null,
+            source text not null,
+            updated_at text not null
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists transaction_overrides (
+            raw_capture_hash text not null,
+            field text not null,
+            value text,
+            created_at text not null,
+            primary key (raw_capture_hash, field)
+        )
+        """
+    )
+    conn.execute(
+        """
+        update transactions
+        set classification_source = 'none', classification_status = 'pending'
+        where category = 'uncategorized' and classification_source = 'legacy'
+        """
     )
     conn.commit()
 
@@ -151,6 +201,132 @@ def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(APP_DB)
     ensure_bill_tables(conn)
     return conn
+
+
+UNSTABLE_MERCHANT_MARKERS = (
+    "交易详情",
+    "账单详情",
+    "美团平台商户",
+    "扫码二维码付款",
+    "扫二维码付款",
+    "财付通",
+    "支付宝",
+    "微信支付",
+    "未知商户",
+)
+
+
+def normalize_merchant_key(merchant: str | None) -> str | None:
+    if not merchant:
+        return None
+    normalized = unicodedata.normalize("NFKC", merchant).lower()
+    normalized = re.sub(r"[^0-9a-z\u4e00-\u9fff]+", "", normalized)
+    return normalized or None
+
+
+def is_stable_merchant(merchant: str | None) -> bool:
+    key = normalize_merchant_key(merchant)
+    if not key or len(key) < 3:
+        return False
+    compact = compact_text(merchant or "")
+    return not any(marker in compact for marker in UNSTABLE_MERCHANT_MARKERS)
+
+
+def remember_merchant_classification(
+    conn: sqlite3.Connection,
+    *,
+    merchant: str | None,
+    category: str,
+    thing: str | None,
+    confidence: float,
+    source: str,
+) -> bool:
+    if not is_stable_merchant(merchant) or category in {"uncategorized", "personal_transfer"}:
+        return False
+    key = normalize_merchant_key(merchant)
+    existing = conn.execute(
+        "select category from merchant_category_memory where merchant_key = ?",
+        (key,),
+    ).fetchone()
+    if existing and existing[0] != category:
+        return False
+    conn.execute(
+        """
+        insert into merchant_category_memory
+        (merchant_key, merchant, category, thing, confidence, source, updated_at)
+        values (?, ?, ?, ?, ?, ?, ?)
+        on conflict(merchant_key) do update set
+            merchant = excluded.merchant,
+            thing = coalesce(excluded.thing, merchant_category_memory.thing),
+            confidence = max(merchant_category_memory.confidence, excluded.confidence),
+            source = excluded.source,
+            updated_at = excluded.updated_at
+        """,
+        (key, merchant, category, thing, confidence, source, datetime.now().isoformat(timespec="seconds")),
+    )
+    return True
+
+
+def merchant_memory_result(conn: sqlite3.Connection, merchant: str | None) -> ClassificationResult | None:
+    if not is_stable_merchant(merchant):
+        return None
+    key = normalize_merchant_key(merchant)
+    row = conn.execute(
+        "select category, thing, confidence from merchant_category_memory where merchant_key = ?",
+        (key,),
+    ).fetchone()
+    if not row:
+        return None
+    return ClassificationResult(
+        category=row[0],
+        thing=row[1],
+        confidence=float(row[2]),
+        source="merchant_memory",
+        status="resolved",
+        reason=f"merchant_memory:{key}",
+    )
+
+
+def capture_overrides(conn: sqlite3.Connection, raw_capture_hash: str) -> dict[str, str | None]:
+    rows = conn.execute(
+        "select field, value from transaction_overrides where raw_capture_hash = ?",
+        (raw_capture_hash,),
+    ).fetchall()
+    return {row[0]: row[1] for row in rows}
+
+
+def apply_persisted_classification(
+    conn: sqlite3.Connection,
+    parsed: ParsedBill,
+    raw_capture_hash: str,
+) -> ParsedBill:
+    overrides = capture_overrides(conn, raw_capture_hash)
+    for field in ("merchant", "product"):
+        if field in overrides:
+            setattr(parsed, field, overrides[field])
+
+    if "category" in overrides:
+        parsed.category = overrides["category"] or "uncategorized"
+        parsed.thing = overrides.get("thing", parsed.thing)
+        parsed.category_confidence = 1.0
+        parsed.classification_source = "manual_override"
+        parsed.classification_status = "resolved"
+        parsed.classification_reason = "capture_override"
+        return parsed
+
+    memory = merchant_memory_result(conn, parsed.merchant)
+    if memory:
+        parsed.category = memory.category
+        parsed.thing = overrides.get("thing", memory.thing)
+        parsed.category_confidence = memory.confidence
+        parsed.classification_source = memory.source
+        parsed.classification_status = memory.status
+        parsed.classification_reason = memory.reason
+        return parsed
+
+    if "thing" in overrides:
+        parsed.thing = overrides["thing"]
+    return parsed
 
 
 def normalize_text(text: str) -> str:
@@ -467,6 +643,9 @@ def parse_bill_text(text: str, source: str = "ios_shortcut", source_hint: str | 
         "thing": classification.thing,
         "category": classification.category,
         "category_confidence": classification.confidence,
+        "classification_source": classification.source,
+        "classification_status": classification.status,
+        "classification_reason": classification.reason,
         "product": product,
         "payment_method": payment_method,
         "bank_name": bank_name,
@@ -512,14 +691,16 @@ def store_bill_capture(
         """,
         (capture_hash, source, normalize_text(ocr_text), image_path, captured_at, now),
     )
+    parsed = apply_persisted_classification(conn, parsed, capture_hash)
     conn.execute(
         """
         insert into transactions
         (transaction_uid, source, payment_app, amount, direction, status, paid_at, merchant, platform,
          thing, category, product, payment_method, bank_name, card_type, card_last4, acquirer, clearing_org,
          transaction_id, merchant_order_id,
-         confidence, raw_capture_hash, raw_text, created_at)
-        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         confidence, raw_capture_hash, raw_text, created_at, classification_source,
+         classification_confidence, classification_status, classification_reason, parse_warnings)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         on conflict(transaction_uid) do update set
             source = excluded.source,
             payment_app = excluded.payment_app,
@@ -538,10 +719,16 @@ def store_bill_capture(
             card_last4 = excluded.card_last4,
             acquirer = excluded.acquirer,
             clearing_org = excluded.clearing_org,
+            transaction_id = excluded.transaction_id,
             merchant_order_id = excluded.merchant_order_id,
             confidence = excluded.confidence,
             raw_capture_hash = excluded.raw_capture_hash,
-            raw_text = excluded.raw_text
+            raw_text = excluded.raw_text,
+            classification_source = excluded.classification_source,
+            classification_confidence = excluded.classification_confidence,
+            classification_status = excluded.classification_status,
+            classification_reason = excluded.classification_reason,
+            parse_warnings = excluded.parse_warnings
         """,
         (
             parsed.transaction_uid,
@@ -568,8 +755,22 @@ def store_bill_capture(
             capture_hash,
             parsed.raw_text,
             now,
+            parsed.classification_source,
+            parsed.category_confidence,
+            parsed.classification_status,
+            parsed.classification_reason,
+            json.dumps(parsed.parse_warnings, ensure_ascii=False),
         ),
     )
+    if parsed.classification_status == "resolved" and parsed.classification_source == "local_rule":
+        remember_merchant_classification(
+            conn,
+            merchant=parsed.merchant,
+            category=parsed.category,
+            thing=parsed.thing,
+            confidence=parsed.category_confidence,
+            source=parsed.classification_source,
+        )
     conn.commit()
     conn.close()
     return parsed
