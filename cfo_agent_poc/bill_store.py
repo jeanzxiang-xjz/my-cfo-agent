@@ -10,6 +10,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+try:
+    from cfo_agent_poc.bill_classifier import classify_locally, detect_category_and_thing
+except ModuleNotFoundError:  # Supports direct execution as cfo_agent_poc/bill_store.py.
+    from bill_classifier import classify_locally, detect_category_and_thing
+
 
 PROJECT_DIR = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_DIR / "data"
@@ -32,36 +37,12 @@ FIELD_LABELS = [
     "交易单号",
     "商家订单号",
     "商户单号",
+    "经营单号",
     "商家小程序",
     "账单分类",
     "标签",
     "账单服务",
-]
-
-
-CATEGORY_RULES = [
-    ("education", "证券考试", ["证券行业专业人员水平评价", "考试", "报名", "中国证券业协会"]),
-    ("books", "图书", ["新华书店", "湖南省新华书店", "书店", "图书", "教材", "书籍"]),
-    ("property", "物业服务", ["物业", "碧桂园生活服务", "生活服务集团", "物业费", "物业服务"]),
-    ("telecom", "通信充值", ["手机充值", "手机话费", "话费", "中国电信", "中国移动", "中国联通", "全渠道运营中心"]),
-    ("entertainment", "演出票务", ["大麦", "大麦网", "演出", "赛事票品", "票品", "电影票", "演唱会"]),
-    ("credit_repayment", "信用借还", ["花呗自动还款", "还款到", "信用借还", "账单还款", "还款成功"]),
-    ("utilities", "水电燃缴费", ["缴费说明", "电费", "水费", "燃气费", "供电分公司", "长沙供电", "户号"]),
-    ("parking", "停车缴费", ["停车缴费", "停车费", "停车"]),
-    ("car_charging", "车辆充电", ["充电桩充值", "充电桩", "华自充电", "特来电", "星星充电", "小桔充电"]),
-    ("auto", "爱车养车", ["爱车养车", "特斯拉", "TESLA", "Tesla", "加油", "洗车", "汽车保养", "车险"]),
-    ("groceries", "超市便利", ["超市", "便利店", "购物超市", "连锁便利店", "便利店-消费", "新佳宜", "乐尔乐", "罗森", "全家", "美宜佳", "芙蓉兴盛"]),
-    ("fruit", "水果", ["水果", "鲜果", "果川", "鲜果优品"]),
-    ("bakery", "烘焙", ["面包", "烘焙", "蛋糕", "鹭岛面包", "面包店"]),
-    ("coffee_tea", "奶茶", ["沪上阿姨", "精选茶饮", "奶茶", "茶饮", "喜茶", "奈雪", "茶百道", "霸王茶姬"]),
-    ("coffee_tea", "咖啡", ["咖啡", "瑞幸", "星巴克", "Manner", "manner"]),
-    ("food_delivery", "饭", ["外卖", "餐饮", "美食", "饭", "粉大厨", "猪肉粉", "米粉", "盖码饭", "湘菜", "海鲜", "徐记海鲜", "饿了么", "麦当劳", "肯德基"]),
-    ("transport", "打车", ["滴滴", "打车", "曹操出行", "高德打车"]),
-    ("transport", "交通", ["地铁", "公交", "火车", "机票", "高铁"]),
-    ("stationery", "文具用品", ["学生用品", "文具", "记号笔", "辉煌学生用品店"]),
-    ("ecommerce", "网购", ["京东", "淘宝", "天猫", "拼多多", "抖音商城", "小红书"]),
-    ("investment", "理财", ["基金", "理财", "定投", "申购", "赎回", "证券"]),
-    ("healthcare", "医疗", ["医院", "门诊", "药房", "体检"]),
+    "交易服务",
 ]
 
 
@@ -81,6 +62,7 @@ class ParsedBill:
     platform: str | None
     thing: str | None
     category: str
+    category_confidence: float
     product: str | None
     payment_method: str | None
     bank_name: str | None
@@ -290,31 +272,33 @@ def detect_payment_app(text: str, source_hint: str | None = None) -> str | None:
 
 
 def detect_platform(text: str, product: str | None) -> str | None:
-    haystack = f"{product or ''} {text}"
+    haystack = compact_text(f"{product or ''} {text}")
     for hint in PLATFORM_HINTS:
         if hint in haystack:
             return hint
     return None
 
 
+def is_generic_merchant_label(line: str) -> bool:
+    compact = compact_text(line)
+    if compact in {"账单", "全部账单", "账单详情", "交易详情", "当前状态", "支付成功", "交易成功", "主页", "留言"}:
+        return True
+    return bool(re.fullmatch(r"[A-Za-z0-9•·：:！!②]*?(?:账单详情|交易详情|全部账单|账单)", compact))
+
+
 def extract_header_merchant(text: str) -> str | None:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    ignored = {
-        "账单",
-        "全部账单",
-        "账单详情",
-        "当前状态",
-        "支付成功",
-        "交易成功",
-    }
     for idx, line in enumerate(lines):
         if re.fullmatch(r"[-+￥¥]?\s*\d+\.\d{1,2}\s*(?:元)?", line):
-            for previous in reversed(lines[max(0, idx - 4):idx]):
-                if previous in ignored:
+            nearby = lines[idx + 1:idx + 3] + list(reversed(lines[max(0, idx - 5):idx]))
+            for candidate in nearby:
+                if is_generic_merchant_label(candidate) or candidate in FIELD_LABELS:
                     continue
-                if re.search(r"\d{1,2}:\d{2}|[A-Za-z]{2,}|[>＞]|[！!×]", previous):
+                if re.fullmatch(r"[-+￥¥]?\s*\d+\.\d{1,2}\s*(?:元)?", candidate):
                     continue
-                return previous
+                if re.search(r"\d{1,2}:\d{2}|[>＞]|[！!×]", candidate):
+                    continue
+                return candidate
     return None
 
 
@@ -322,6 +306,10 @@ def detect_merchant(text: str, product: str | None, platform: str | None) -> str
     merchant_full = first_field(text, ["商户全称"])
     if merchant_full:
         return merchant_full
+
+    recipient = first_field(text, ["收款方全称", "收款方"])
+    if recipient:
+        return recipient
 
     header_merchant = extract_header_merchant(text)
     if not product:
@@ -338,21 +326,14 @@ def detect_merchant(text: str, product: str | None, platform: str | None) -> str
     return header_merchant or (first_part[:40] if first_part else None)
 
 
-def detect_category_and_thing(text: str, product: str | None) -> tuple[str, str | None]:
-    haystack = f"{product or ''} {text}"
-    for category, thing, hints in CATEGORY_RULES:
-        if any(hint in haystack for hint in hints):
-            return category, thing
-    return "uncategorized", None
-
-
 def normalize_order_id(value: str | None) -> str | None:
     if not value:
         return None
-    value = re.sub(r"\s+", "", value)
-    if re.search(r"扫码|退款|查询|点击|查看", value):
-        return None
-    return value or None
+    candidates = re.findall(r"(?<![A-Za-z0-9])([A-Za-z0-9][A-Za-z0-9_-]{5,})(?![A-Za-z0-9])", value)
+    for candidate in reversed(candidates):
+        if any(char.isdigit() for char in candidate):
+            return candidate
+    return None
 
 
 def parse_payment_method(value: str | None) -> tuple[str | None, str | None, str | None]:
@@ -389,8 +370,14 @@ def parse_bill_text(text: str, source: str = "ios_shortcut", source_hint: str | 
     product = clean_product(first_field(text, ["商品说明", "商品"]))
     platform = detect_platform(text, product)
     merchant = detect_merchant(text, product, platform)
-    category, thing = detect_category_and_thing(text, product)
     payment_app = detect_payment_app(text, source_hint=source_hint or source)
+    classification = classify_locally(
+        merchant=merchant,
+        product=product,
+        platform=platform,
+        payment_app=payment_app,
+        text=text,
+    )
     amount = extract_amount(text)
     status = extract_status(text)
     paid_at = extract_paid_at(text)
@@ -412,8 +399,9 @@ def parse_bill_text(text: str, source: str = "ios_shortcut", source_hint: str | 
         "paid_at": paid_at,
         "merchant": merchant,
         "platform": platform,
-        "thing": thing,
-        "category": category,
+        "thing": classification.thing,
+        "category": classification.category,
+        "category_confidence": classification.confidence,
         "product": product,
         "payment_method": payment_method,
         "bank_name": bank_name,
@@ -422,7 +410,7 @@ def parse_bill_text(text: str, source: str = "ios_shortcut", source_hint: str | 
         "acquirer": extract_field(text, "收单机构"),
         "clearing_org": extract_field(text, "清算机构"),
         "transaction_id": normalize_order_id(first_field(text, ["交易单号", "订单号"])),
-        "merchant_order_id": normalize_order_id(first_field(text, ["商户单号", "商家订单号"])),
+        "merchant_order_id": normalize_order_id(first_field(text, ["商户单号", "商家订单号", "经营单号"])),
     }
 
     confidence = 0.35
@@ -431,9 +419,7 @@ def parse_bill_text(text: str, source: str = "ios_shortcut", source_hint: str | 
             confidence += 0.1
     if parsed.get("merchant"):
         confidence += 0.08
-    if parsed.get("category") != "uncategorized":
-        confidence += 0.07
-    parsed["confidence"] = min(confidence, 0.99)
+    parsed["confidence"] = round(min(confidence, 0.99), 2)
     parsed["transaction_uid"] = build_transaction_uid(parsed)
     parsed["raw_text"] = text
 
