@@ -14,6 +14,7 @@ cfo_agent_poc/data/ocr_texts/
 cfo_agent_poc/web_app/data.json
 
 # Local runtimes and generated dependencies
+.worktrees/
 cfo_agent_poc/bin/
 cfo_agent_poc/web_app/node_modules/
 
