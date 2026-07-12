@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from cfo_agent_poc.bill_classifier import classify_locally
+from cfo_agent_poc.bill_classifier import ClassificationResult, classify_locally
 
 
 class LocalClassificationTests(unittest.TestCase):
@@ -16,8 +16,10 @@ class LocalClassificationTests(unittest.TestCase):
         )
 
         self.assertEqual(result.category, "food_delivery")
-        self.assertEqual(result.thing, "餐饮外卖")
+        self.assertEqual(result.thing, "饭")
         self.assertGreaterEqual(result.confidence, 0.9)
+        self.assertEqual(result.source, "local_rule")
+        self.assertEqual(result.status, "resolved")
 
     def test_classifies_personal_qr_transfer(self) -> None:
         result = classify_locally(
@@ -31,3 +33,60 @@ class LocalClassificationTests(unittest.TestCase):
         self.assertEqual(result.category, "personal_transfer")
         self.assertEqual(result.thing, "个人转账")
         self.assertGreaterEqual(result.confidence, 0.9)
+
+    def test_restores_coffee_tea_rule(self) -> None:
+        result = classify_locally(
+            merchant="瑞幸咖啡",
+            product="生椰拿铁",
+            platform=None,
+            payment_app="wechat",
+            text="",
+        )
+
+        self.assertIsInstance(result, ClassificationResult)
+        self.assertEqual(result.category, "coffee_tea")
+        self.assertEqual(result.thing, "咖啡")
+
+    def test_restores_parking_and_telecom_rules(self) -> None:
+        parking = classify_locally(
+            merchant="示例停车场",
+            product="停车缴费",
+            platform=None,
+            payment_app="wechat",
+            text="",
+        )
+        telecom = classify_locally(
+            merchant="中国移动",
+            product="手机话费充值",
+            platform=None,
+            payment_app="alipay",
+            text="",
+        )
+
+        self.assertEqual(parking.category, "parking")
+        self.assertEqual(telecom.category, "telecom")
+
+    def test_specific_structured_coffee_rule_beats_generic_raw_meituan(self) -> None:
+        result = classify_locally(
+            merchant="瑞幸咖啡",
+            product="生椰拿铁",
+            platform="美团",
+            payment_app="wechat",
+            text="美团订单详情",
+        )
+
+        self.assertEqual(result.category, "coffee_tea")
+        self.assertEqual(result.thing, "咖啡")
+
+    def test_unknown_result_is_pending(self) -> None:
+        result = classify_locally(
+            merchant="示例商户",
+            product="未知项目",
+            platform=None,
+            payment_app="wechat",
+            text="",
+        )
+
+        self.assertEqual(result.category, "uncategorized")
+        self.assertEqual(result.source, "none")
+        self.assertEqual(result.status, "pending")

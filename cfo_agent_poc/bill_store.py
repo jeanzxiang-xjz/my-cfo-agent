@@ -5,15 +5,16 @@ import hashlib
 import json
 import re
 import sqlite3
+from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 try:
-    from cfo_agent_poc.bill_classifier import classify_locally, detect_category_and_thing
+    from cfo_agent_poc.bill_classifier import LOCAL_CATEGORY_RULES, classify_locally, detect_category_and_thing
 except ModuleNotFoundError:  # Supports direct execution as cfo_agent_poc/bill_store.py.
-    from bill_classifier import classify_locally, detect_category_and_thing
+    from bill_classifier import LOCAL_CATEGORY_RULES, classify_locally, detect_category_and_thing
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -47,6 +48,7 @@ FIELD_LABELS = [
 
 
 PLATFORM_HINTS = ["美团", "京东", "淘宝", "天猫", "拼多多", "饿了么", "抖音", "小红书"]
+CATEGORY_RULES = [(category, thing, list(hints)) for category, thing, hints in LOCAL_CATEGORY_RULES]
 
 
 @dataclass
@@ -74,6 +76,7 @@ class ParsedBill:
     merchant_order_id: str | None
     confidence: float
     raw_text: str
+    parse_warnings: list[str]
 
 
 def ensure_bill_tables(conn: sqlite3.Connection) -> None:
@@ -283,57 +286,119 @@ def is_generic_merchant_label(line: str) -> bool:
     compact = compact_text(line)
     if compact in {"账单", "全部账单", "账单详情", "交易详情", "当前状态", "支付成功", "交易成功", "主页", "留言"}:
         return True
-    return bool(re.fullmatch(r"[A-Za-z0-9•·：:！!②]*?(?:账单详情|交易详情|全部账单|账单)", compact))
+    return bool(re.fullmatch(r".?(?:交易详情|账单详情|全部账单|账单)", compact))
+
+
+def score_header_merchant_candidates(text: str) -> tuple[str | None, list[str]]:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    amount_indexes = [
+        index
+        for index, line in enumerate(lines)
+        if re.fullmatch(r"[-+￥¥]?\s*\d+\.\d{1,2}\s*(?:元)?", line)
+    ]
+    nearby_candidates = [
+        (amount_index, candidate_index, lines[candidate_index])
+        for amount_index in amount_indexes
+        for candidate_index in range(max(0, amount_index - 4), min(len(lines), amount_index + 5))
+        if candidate_index != amount_index
+    ]
+    occurrences = Counter(compact_text(candidate) for _, _, candidate in nearby_candidates)
+    warnings: list[str] = []
+    scored_candidates: list[tuple[int, str]] = []
+
+    for amount_index, candidate_index, candidate in nearby_candidates:
+        compact = compact_text(candidate)
+        if is_generic_merchant_label(candidate):
+            warning = f"rejected_generic_merchant_candidate:{candidate}"
+            if warning not in warnings:
+                warnings.append(warning)
+
+        distance = abs(candidate_index - amount_index)
+        score = (12 if candidate_index > amount_index else 9) - (2 * distance)
+        score += 8 * (occurrences[compact] - 1)
+        if re.search(r"店|公司|商户|商行|体彩|便利|餐饮|个体工商户", candidate):
+            score += 8
+        if 2 <= len(compact) <= 60:
+            score += 2
+        if candidate in FIELD_LABELS or is_generic_merchant_label(candidate):
+            score -= 100
+        if re.fullmatch(r"[-+￥¥]?\s*\d+\.\d{1,2}\s*(?:元)?", candidate):
+            score -= 100
+        if re.search(r"\d{1,2}:\d{2}|[>＞]|[！!×]", candidate):
+            score -= 50
+        if "<" in candidate:
+            score -= 30
+        scored_candidates.append((score, candidate))
+
+    if not scored_candidates:
+        return None, warnings
+    score, candidate = max(scored_candidates, key=lambda item: item[0])
+    return (candidate if score > 0 else None), warnings
 
 
 def extract_header_merchant(text: str) -> str | None:
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    for idx, line in enumerate(lines):
-        if re.fullmatch(r"[-+￥¥]?\s*\d+\.\d{1,2}\s*(?:元)?", line):
-            nearby = lines[idx + 1:idx + 3] + list(reversed(lines[max(0, idx - 5):idx]))
-            for candidate in nearby:
-                if is_generic_merchant_label(candidate) or candidate in FIELD_LABELS:
-                    continue
-                if re.fullmatch(r"[-+￥¥]?\s*\d+\.\d{1,2}\s*(?:元)?", candidate):
-                    continue
-                if re.search(r"\d{1,2}:\d{2}|[>＞]|[！!×]", candidate):
-                    continue
-                return candidate
-    return None
+    merchant, _ = score_header_merchant_candidates(text)
+    return merchant
 
 
 def detect_merchant(text: str, product: str | None, platform: str | None) -> str | None:
+    merchant, _ = detect_merchant_with_warnings(text, product, platform)
+    return merchant
+
+
+def detect_merchant_with_warnings(text: str, product: str | None, platform: str | None) -> tuple[str | None, list[str]]:
     merchant_full = first_field(text, ["商户全称"])
     if merchant_full:
-        return merchant_full
+        return merchant_full, []
 
     recipient = first_field(text, ["收款方全称", "收款方"])
     if recipient:
-        return recipient
+        return recipient, []
 
-    header_merchant = extract_header_merchant(text)
+    header_merchant, warnings = score_header_merchant_candidates(text)
     if not product:
-        return header_merchant or first_field(text, ["收款方全称", "收款方"])
+        return header_merchant or first_field(text, ["收款方全称", "收款方"]), warnings
 
     first_part = re.split(r"\s*-\s*", product, maxsplit=1)[0]
     first_part = re.sub(r"(App|小程序)$", "", first_part).strip()
     if "·" in first_part:
-        return first_part.split("·", 1)[0].strip()
+        return first_part.split("·", 1)[0].strip(), warnings
     if "（" in first_part:
-        return first_part.split("（", 1)[0].strip()
+        return first_part.split("（", 1)[0].strip(), warnings
     if platform and first_part == platform:
-        return header_merchant or platform
-    return header_merchant or (first_part[:40] if first_part else None)
+        return header_merchant or platform, warnings
+    return header_merchant or (first_part[:40] if first_part else None), warnings
 
 
 def normalize_order_id(value: str | None) -> str | None:
     if not value:
         return None
+    if re.fullmatch(r"[\d\s]+", value):
+        reconstructed = compact_text(value)
+        return reconstructed if len(reconstructed) >= 6 else None
     candidates = re.findall(r"(?<![A-Za-z0-9])([A-Za-z0-9][A-Za-z0-9_-]{5,})(?![A-Za-z0-9])", value)
-    for candidate in reversed(candidates):
-        if any(char.isdigit() for char in candidate):
-            return candidate
-    return None
+    return candidates[-1] if candidates else None
+
+
+def build_parse_warnings(parsed: dict[str, Any], merchant_warnings: list[str], text: str) -> list[str]:
+    warnings = list(merchant_warnings)
+    for field in ("amount", "status", "paid_at", "merchant"):
+        if parsed.get(field) is None:
+            warnings.append(f"missing_{field}")
+
+    transaction_raw = first_field(text, ["交易单号", "订单号"])
+    if parsed.get("transaction_id") is None:
+        warnings.append("invalid_transaction_id" if transaction_raw else "missing_transaction_id")
+
+    merchant_order_raw = first_field(text, ["商户单号", "商家订单号", "经营单号"])
+    if merchant_order_raw and parsed.get("merchant_order_id") is None:
+        warnings.append("invalid_merchant_order_id")
+
+    paid_at_raw = first_field(text, ["支付时间"])
+    if paid_at_raw and parsed.get("paid_at") is None:
+        warnings.remove("missing_paid_at")
+        warnings.append("invalid_paid_at")
+    return list(dict.fromkeys(warnings))
 
 
 def parse_payment_method(value: str | None) -> tuple[str | None, str | None, str | None]:
@@ -369,7 +434,7 @@ def parse_bill_text(text: str, source: str = "ios_shortcut", source_hint: str | 
     text = normalize_text(text)
     product = clean_product(first_field(text, ["商品说明", "商品"]))
     platform = detect_platform(text, product)
-    merchant = detect_merchant(text, product, platform)
+    merchant, merchant_warnings = detect_merchant_with_warnings(text, product, platform)
     payment_app = detect_payment_app(text, source_hint=source_hint or source)
     classification = classify_locally(
         merchant=merchant,
@@ -422,6 +487,7 @@ def parse_bill_text(text: str, source: str = "ios_shortcut", source_hint: str | 
     parsed["confidence"] = round(min(confidence, 0.99), 2)
     parsed["transaction_uid"] = build_transaction_uid(parsed)
     parsed["raw_text"] = text
+    parsed["parse_warnings"] = build_parse_warnings(parsed, merchant_warnings, text)
 
     return ParsedBill(**parsed)
 
