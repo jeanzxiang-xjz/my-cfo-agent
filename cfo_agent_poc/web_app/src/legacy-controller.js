@@ -1072,6 +1072,7 @@ async function submitQuestion(question) {
 function setSyncModalState(kind, title, meta) {
   const card = $("syncStateCard");
   card.className = `sync-state-card ${kind || ""}`.trim();
+  $("syncItemList").classList.toggle("syncing", kind === "running");
   $("syncStatusLabel").textContent = kind === "running" ? "同步中" : kind === "success" ? "同步完成" : kind === "error" ? "同步失败" : "准备同步";
   $("syncStatusTitle").textContent = title;
   $("syncStatusMeta").textContent = meta;

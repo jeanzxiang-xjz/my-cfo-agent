@@ -603,14 +603,14 @@ body.motion-ready .app-shell {
 }
 
 .agent-hero {
-  height: clamp(620px, calc(100dvh - 126px), 720px);
+  height: clamp(650px, calc(100dvh - 112px), 760px);
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(360px, 0.72fr);
-  gap: 34px;
+  grid-template-columns: minmax(0, 1.12fr) minmax(330px, 0.68fr);
+  gap: 28px;
   align-items: stretch;
   margin-bottom: 16px;
-  padding: 30px 34px;
+  padding: 28px 30px;
   background:
     radial-gradient(circle at 72% 42%, rgba(82, 241, 207, 0.2), transparent 29%),
     radial-gradient(circle at 12% 12%, rgba(156, 255, 234, 0.11), transparent 28%),
@@ -641,9 +641,9 @@ body.motion-ready .app-shell {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto auto minmax(300px, 1fr) auto auto;
   align-content: stretch;
-  gap: 12px;
+  gap: 10px;
 }
 
 .agent-eyebrow {
@@ -663,10 +663,10 @@ body.motion-ready .app-shell {
 }
 
 .agent-hero h1 {
-  max-width: 680px;
+  max-width: 760px;
   color: var(--text-strong);
-  font-size: clamp(34px, 5vw, 64px);
-  line-height: 1;
+  font-size: clamp(32px, 3.4vw, 52px);
+  line-height: 1.08;
   font-weight: 840;
   letter-spacing: 0;
   text-wrap: balance;
@@ -678,8 +678,8 @@ body.motion-ready .app-shell {
 .agent-hero #headerSummary {
   max-width: 760px;
   color: var(--muted);
-  font-size: 15px;
-  line-height: 1.7;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .agent-hero .chat-messages {
@@ -688,7 +688,8 @@ body.motion-ready .app-shell {
   max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 11px;
+  scrollbar-gutter: stable;
+  padding: 14px;
   border: 1px solid rgba(122, 255, 226, 0.13);
   border-radius: var(--radius);
   background:
@@ -711,10 +712,10 @@ body.motion-ready .app-shell {
 }
 
 .agent-hero .message {
-  max-width: min(820px, 96%);
-  padding: 10px 11px;
-  font-size: 13px;
-  line-height: 1.55;
+  max-width: 100%;
+  padding: 12px 13px;
+  font-size: 13.5px;
+  line-height: 1.62;
 }
 
 .agent-hero .quick-prompts {
@@ -1220,10 +1221,12 @@ body.motion-ready .app-shell {
 }
 
 .intelligence-synthesis {
+  --synthesis-workspace-height: clamp(400px, 29vw, 456px);
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.7fr);
   gap: 20px;
+  height: var(--synthesis-workspace-height);
   margin-top: 18px;
   padding-top: 18px;
   border-top: 1px solid var(--line);
@@ -1232,6 +1235,9 @@ body.motion-ready .app-shell {
 .analysis-feed {
   position: relative;
   min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .analysis-heading {
@@ -1242,6 +1248,10 @@ body.motion-ready .app-shell {
   position: relative;
   display: grid;
   gap: 1px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
@@ -1288,6 +1298,9 @@ body.motion-ready .app-shell {
 .category-console {
   position: relative;
   min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   margin-top: 0;
   padding-left: 20px;
   border-left: 1px solid var(--line);
@@ -1308,6 +1321,33 @@ body.motion-ready .app-shell {
 .category-stack {
   display: grid;
   gap: 9px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-right: 8px;
+}
+
+.decision-feed::-webkit-scrollbar,
+.category-stack::-webkit-scrollbar {
+  width: 7px;
+}
+
+.decision-feed::-webkit-scrollbar-track,
+.category-stack::-webkit-scrollbar-track {
+  background: rgba(6, 12, 10, 0.3);
+  border-radius: 999px;
+}
+
+.decision-feed::-webkit-scrollbar-thumb,
+.category-stack::-webkit-scrollbar-thumb {
+  background: rgba(82, 241, 207, 0.24);
+  border-radius: 999px;
+}
+
+.decision-feed::-webkit-scrollbar-thumb:hover,
+.category-stack::-webkit-scrollbar-thumb:hover {
+  background: rgba(82, 241, 207, 0.4);
 }
 
 .category-row {
@@ -1356,9 +1396,9 @@ body.motion-ready .app-shell {
 }
 
 .command-console.agent-hero {
-  grid-template-columns: minmax(0, 0.95fr) minmax(360px, 0.72fr);
+  grid-template-columns: minmax(0, 1.12fr) minmax(330px, 0.68fr);
   grid-template-rows: none;
-  gap: 34px;
+  gap: 28px;
 }
 
 .chat-messages {
@@ -1515,14 +1555,17 @@ body.motion-ready .app-shell {
 
 .markdown-table-wrap {
   max-width: 100%;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+  padding-bottom: 2px;
 }
 
 .markdown-message table {
-  width: 100%;
-  min-width: 360px;
+  width: max(100%, 440px);
+  min-width: 440px;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
 .markdown-message th,
@@ -2349,36 +2392,72 @@ body.modal-open {
 }
 
 .sync-modal {
-  width: min(760px, 100%);
+  width: min(840px, 100%);
 }
 
 .sync-body {
   display: grid;
-  gap: 14px;
-  padding: 22px;
+  gap: 18px;
+  padding: 24px 26px 22px;
 }
 
 .sync-state-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 142px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 14px;
+  padding: 21px 24px;
   background:
-    linear-gradient(90deg, rgba(82, 241, 207, 0.1), transparent),
+    linear-gradient(100deg, rgba(82, 241, 207, 0.12), transparent 62%),
     rgba(6, 12, 10, 0.42);
+}
+
+.sync-state-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: rgba(122, 255, 226, 0.28);
 }
 
 .sync-state-card.running {
   border-color: var(--line-strong);
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: 0 14px 34px rgba(2, 16, 13, 0.16);
 }
 
 .sync-state-card.success {
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: 0 14px 34px rgba(2, 16, 13, 0.16);
 }
 
 .sync-state-card.error {
   border-color: rgba(240, 115, 104, 0.38);
-  box-shadow: inset 3px 0 0 var(--danger);
+  box-shadow: 0 14px 34px rgba(35, 8, 7, 0.14);
+}
+
+.sync-state-card.running::before,
+.sync-state-card.success::before {
+  background: var(--accent);
+}
+
+.sync-state-card.error::before {
+  background: var(--danger);
+}
+
+.sync-state-card.running::after {
+  content: "";
+  position: absolute;
+  right: 24px;
+  bottom: 17px;
+  left: 24px;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, transparent 0%, transparent 30%, var(--accent) 48%, rgba(156, 255, 234, 0.62) 58%, transparent 74%, transparent 100%),
+    rgba(122, 255, 226, 0.1);
+  background-size: 220% 100%, auto;
+  background-position: 100% 0, 0 0;
 }
 
 .sync-state-card span,
@@ -2393,52 +2472,85 @@ body.modal-open {
 
 .sync-state-card strong {
   display: block;
-  margin-top: 7px;
+  margin-top: 8px;
   color: var(--text-strong);
-  font-size: 18px;
-  line-height: 1.2;
+  font-size: 22px;
+  line-height: 1.18;
+  letter-spacing: 0;
 }
 
 .sync-state-card small {
   display: block;
-  margin-top: 8px;
+  max-width: 62ch;
+  margin-top: 10px;
 }
 
 .sync-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  border-top: 1px solid var(--line);
-  border-left: 1px solid var(--line);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(6, 12, 10, 0.32);
 }
 
 .sync-metrics div {
-  min-height: 78px;
-  padding: 12px;
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: rgba(6, 12, 10, 0.28);
+  min-height: 88px;
+  padding: 16px 18px;
+  background: linear-gradient(180deg, rgba(82, 241, 207, 0.035), transparent);
+}
+
+.sync-metrics div + div {
+  border-left: 1px solid var(--line);
 }
 
 .sync-metrics strong {
   display: block;
-  margin-top: 8px;
+  margin-top: 10px;
   color: var(--text-strong);
   font-family: var(--mono);
-  font-size: 22px;
+  font-size: 24px;
   line-height: 1;
 }
 
 .sync-log-panel {
   display: grid;
-  gap: 10px;
+  gap: 11px;
+  padding-top: 2px;
 }
 
 .sync-item-list {
-  max-height: 230px;
-  overflow: auto;
+  min-height: 112px;
+  max-height: 248px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(6, 12, 10, 0.28);
+  background:
+    linear-gradient(180deg, rgba(82, 241, 207, 0.035), transparent 64px),
+    rgba(6, 12, 10, 0.28);
+}
+
+.sync-item-list .empty-state {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  min-height: 110px;
+  place-items: center start;
+  padding: 20px;
+  color: var(--muted);
+}
+
+.sync-item-list.syncing .empty-state::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 30%;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  transform: translateX(-110%);
 }
 
 .sync-item {
@@ -2479,6 +2591,15 @@ body.modal-open {
 .sync-actions {
   display: flex;
   justify-content: flex-end;
+  margin-top: 2px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.sync-actions .primary-action {
+  min-width: 118px;
+  min-height: 44px;
+  padding: 0 18px;
 }
 
 .sync-actions button[disabled],
@@ -2596,6 +2717,14 @@ body.modal-open {
   .agent-crosshair {
     animation: breathePlane 5.2s ease-in-out infinite;
   }
+
+  .sync-state-card.running::after {
+    animation: syncReadSweep 1.9s ease-in-out infinite;
+  }
+
+  .sync-item-list.syncing .empty-state::after {
+    animation: syncLogSweep 1.45s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  }
 }
 
 @keyframes spinCore {
@@ -2639,6 +2768,18 @@ body.modal-open {
   50% {
     opacity: 0.9;
     transform: translate(-50%, -50%) scale(1.025);
+  }
+}
+
+@keyframes syncReadSweep {
+  to {
+    background-position: -120% 0, 0 0;
+  }
+}
+
+@keyframes syncLogSweep {
+  to {
+    transform: translateX(365%);
   }
 }
 
@@ -2897,6 +3038,20 @@ body.modal-open {
     grid-template-columns: 1fr;
   }
 
+  .intelligence-synthesis {
+    height: auto;
+  }
+
+  .analysis-feed,
+  .category-console {
+    display: block;
+  }
+
+  .decision-feed,
+  .category-stack {
+    max-height: 320px;
+  }
+
   .category-console {
     padding-left: 0;
     padding-top: 16px;
@@ -3090,6 +3245,23 @@ body.modal-open {
 
   .sync-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sync-metrics div {
+    min-height: 76px;
+    padding: 14px;
+  }
+
+  .sync-metrics div:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .sync-metrics div:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .sync-actions .primary-action {
+    width: 100%;
   }
 
   .panel-heading {
