@@ -45,9 +45,10 @@ class CategoryCatalogTests(unittest.TestCase):
 
     def test_create_rejects_duplicate_name_and_invalid_appearance(self) -> None:
         created = create_category(self.db_path, {
-            "display_name": " 宠物 ", "icon_key": "heart", "color_token": "cat-7"
+            "display_name": " 宠物 ", "icon_key": "pet", "color_token": "cat-7"
         })
         self.assertEqual(created["display_name"], "宠物")
+        self.assertEqual(created["icon_key"], "pet")
         self.assertTrue(created["id"].startswith("custom_"))
         with self.assertRaises(CategoryError) as duplicate:
             create_category(self.db_path, {"display_name": "宠物", "icon_key": "heart", "color_token": "cat-7"})
@@ -55,6 +56,19 @@ class CategoryCatalogTests(unittest.TestCase):
         with self.assertRaises(CategoryError) as invalid:
             create_category(self.db_path, {"display_name": "健身", "icon_key": "emoji", "color_token": "cat-1"})
         self.assertEqual(invalid.exception.code, "invalid_icon")
+
+    def test_supports_expanded_semantic_icon_set(self) -> None:
+        catalog = get_catalog(self.db_path)
+        expanded_icons = {"pet", "medicine", "parcel", "beauty", "delivery", "apparel"}
+        self.assertTrue(expanded_icons.issubset(set(catalog["allowed_icons"])))
+        for index, icon_key in enumerate(sorted(expanded_icons)):
+            with self.subTest(icon_key=icon_key):
+                created = create_category(self.db_path, {
+                    "display_name": f"图标分类{index}",
+                    "icon_key": icon_key,
+                    "color_token": "cat-1",
+                })
+                self.assertEqual(created["icon_key"], icon_key)
 
     def test_primary_limit_and_atomic_order_validation(self) -> None:
         before = [

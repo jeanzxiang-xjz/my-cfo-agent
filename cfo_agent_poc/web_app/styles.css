@@ -3207,7 +3207,7 @@ body.chat-expanded-open {
   overflow-x: auto;
   padding-bottom: 2px;
   scrollbar-width: none;
-  mask-image: linear-gradient(90deg, #000 0 calc(100% - 28px), transparent 100%);
+  align-items: center;
 }
 
 .filter-strip-scroll::-webkit-scrollbar {
@@ -3354,7 +3354,7 @@ body.chat-expanded-open {
 .filter-popover {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
+  left: 0;
   z-index: var(--z-popover);
   width: min(680px, 100%);
   padding: var(--sp-5);
@@ -3365,7 +3365,7 @@ body.chat-expanded-open {
   opacity: 0;
   visibility: hidden;
   transform: translateY(-6px) scale(0.99);
-  transform-origin: top right;
+  transform-origin: top left;
   transition:
     opacity var(--dur-2) var(--ease-out),
     transform var(--dur-3) var(--ease-out),
@@ -3411,37 +3411,6 @@ body.chat-expanded-open {
 .filter-popover-grid.is-disabled-categories .ledger-filter-chip:not(.active) {
   opacity: 0.7;
   border-style: dashed;
-}
-
-.filter-popover-manage {
-  margin: var(--sp-4) calc(var(--sp-5) * -1) calc(var(--sp-5) * -1);
-  padding: var(--sp-3) var(--sp-5);
-  border-top: 1px solid var(--line);
-  background: var(--ink-1);
-}
-
-.filter-popover-manage button {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-height: 32px;
-  color: var(--ink-10);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  transition: color var(--dur-2) var(--ease-out);
-}
-
-.filter-popover-manage button:hover {
-  color: var(--jade-9);
-}
-
-.filter-popover-manage svg {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.35;
-  stroke-linecap: round;
 }
 
 /* — 待订正：独立于时间筛选，保证任何截图都不会悄悄消失 — */
@@ -4466,6 +4435,83 @@ body.modal-open {
 
 .category-row-copy {
   min-width: 0;
+}
+
+/* Category pictograms share a 24-unit grid; no fractional 15px downscaling. */
+svg.category-symbol {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.txn-category-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+
+.txn-category-icon .category-symbol {
+  width: 18px;
+  height: 18px;
+}
+
+.ledger-category-settings {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  color: var(--muted);
+  background: var(--ink-2);
+}
+
+.ledger-category-settings > svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ledger-category-settings:hover,
+.ledger-category-settings:focus-visible {
+  color: var(--jade-9);
+  border-color: var(--jade-7);
+}
+
+.ledger-category-settings:focus-visible {
+  outline: 2px solid var(--jade-7);
+  outline-offset: 3px;
+}
+
+.ledger-settings-tip {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: var(--z-popover);
+  width: max-content;
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--ink-2);
+  color: var(--text);
+  font-size: var(--fs-xs);
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.ledger-category-settings:hover .ledger-settings-tip,
+.ledger-category-settings:focus-visible .ledger-settings-tip {
+  visibility: visible;
 }
 
 .category-row-copy strong,
