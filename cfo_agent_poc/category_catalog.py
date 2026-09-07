@@ -11,7 +11,8 @@ RESERVED_CATEGORY_ID = "uncategorized"
 ALLOWED_ICON_KEYS = (
     "cup", "meal", "car", "bolt", "bag", "fruit", "book", "cart",
     "train", "heart", "home", "phone", "ticket", "wallet", "drop",
-    "pencil", "screen", "plane", "gift", "transfer", "circle",
+    "pencil", "screen", "plane", "gift", "transfer", "circle", "pet",
+    "medicine", "parcel", "beauty", "delivery", "apparel",
 )
 ALLOWED_COLOR_TOKENS = tuple(f"cat-{index}" for index in range(1, 9))
 

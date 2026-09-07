@@ -2181,31 +2181,46 @@ function saveBudgets(budgets) {
 /* ---------------------------- 分类目录维护 ---------------------------- */
 
 const CATEGORY_ICON_PATHS = {
-  cup: '<path d="M4 5.5h7v4.2A3.3 3.3 0 0 1 7.7 13H7.3A3.3 3.3 0 0 1 4 9.7Z"/><path d="M11 6.5h1a1.7 1.7 0 0 1 0 3.4h-1M3 14h10"/>',
-  meal: '<path d="M5 2.5v5M3.5 2.5v3A1.5 1.5 0 0 0 5 7M6.5 2.5v3A1.5 1.5 0 0 1 5 7v6.5M11 2.5v11M9.5 2.5v4H11"/>',
-  car: '<path d="m3 9 1.3-3.4h7.4L13 9v3H3Z"/><path d="M4.2 12v1.3M11.8 12v1.3M5 9.5h.1M11 9.5h.1"/>',
-  bolt: '<path d="m9.5 1.8-5 7h3l-1 5.4 5-7h-3Z"/>',
-  bag: '<path d="M3 5.5h10l-.7 8H3.7Z"/><path d="M5.5 5.5a2.5 2.5 0 0 1 5 0"/>',
-  fruit: '<path d="M8 5c-3-1.6-5.2.7-4.5 4.2.7 3.6 2.4 5 4.5 3.2 2.1 1.8 3.8.4 4.5-3.2C13.2 5.7 11 3.4 8 5Z"/><path d="M8 5c.2-2 1.3-3.1 3.2-3.2"/>',
-  book: '<path d="M2.5 3.5h4.2A1.3 1.3 0 0 1 8 4.8v8.3a1.8 1.8 0 0 0-1.6-.8H2.5ZM13.5 3.5H9.3A1.3 1.3 0 0 0 8 4.8v8.3a1.8 1.8 0 0 1 1.6-.8h3.9Z"/>',
-  cart: '<path d="M2 3h1.5l1.2 6.5h6.8l1.3-4.7H4M5.5 13h.1M11 13h.1"/>',
-  train: '<rect x="3.5" y="2.5" width="9" height="9" rx="2"/><path d="M5 14l1.5-2.5M11 14l-1.5-2.5M5.5 5.5h5M5.5 8.5h.1M10.5 8.5h.1"/>',
-  heart: '<path d="M8 13.5 3.3 9.1C.8 6.8 2.3 3 5.2 3A3.3 3.3 0 0 1 8 4.7 3.3 3.3 0 0 1 10.8 3c2.9 0 4.4 3.8 1.9 6.1Z"/>',
-  home: '<path d="m2.5 7 5.5-4.5L13.5 7v6.5h-11Z"/><path d="M6 13.5V9h4v4.5"/>',
-  phone: '<rect x="4.5" y="1.8" width="7" height="12.4" rx="1.5"/><path d="M7 11.8h2"/>',
-  ticket: '<path d="M2.5 5h11v2a1.5 1.5 0 0 0 0 3v2h-11v-2a1.5 1.5 0 0 0 0-3Z"/><path d="M8 5v7"/>',
-  wallet: '<path d="M2.5 4h10.2v8.5H2.5Z"/><path d="M2.5 5.5 10 3v1M9.5 7h4v3h-4Z"/>',
-  drop: '<path d="M8 2.2S4 6.8 4 9.5a4 4 0 0 0 8 0C12 6.8 8 2.2 8 2.2Z"/>',
-  pencil: '<path d="m3 11.5-.5 2 2-.5 7.8-7.8-1.5-1.5Z"/><path d="m9.8 4.7 1.5 1.5"/>',
-  screen: '<rect x="2.5" y="3" width="11" height="8" rx="1.2"/><path d="M6 13.5h4M8 11v2.5"/>',
-  plane: '<path d="m2 9.5 12-6-4.5 9-2-3Z"/><path d="m7.5 9.5-3-2"/>',
-  gift: '<rect x="2.5" y="6" width="11" height="7.5"/><path d="M8 6v7.5M2 6h12V4H2ZM8 4C6.5 1.5 4 2 4 3.3 4 4 4.8 4 8 4Zm0 0c1.5-2.5 4-2 4 1.3 0 .7-.8.7-4 .7Z"/>',
-  transfer: '<path d="M2.5 5h9M9.5 2.8 12 5 9.5 7.2M13.5 11h-9M6.5 8.8 4 11l2.5 2.2"/>',
-  circle: '<circle cx="8" cy="8" r="5.2"/><path d="M8 5.3v3.2M8 11h.1"/>',
+  cup: '<path d="M4 8h12v7a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5Z"/><path d="M16 9h2a3 3 0 0 1 0 6h-2M7 3v2M12 3v2"/>',
+  meal: '<path d="M5 3v6a3 3 0 0 0 6 0V3M8 3v18M19 21V3c-3 2-4 5-4 9h4"/>',
+  car: '<path d="m3 11 2-6h14l2 6v8H3ZM3 11h18M6 19v2M18 19v2M7 15h1M16 15h1"/>',
+  bolt: '<path d="m13 2-9 12h7l-1 8L20 9h-7Z"/>',
+  bag: '<path d="M4 8h16l-1 13H5ZM8 8V6a4 4 0 0 1 8 0v2"/>',
+  fruit: '<path d="M12 8c-5-3-10 0-8 6 1 4 3 8 8 6 5 2 7-2 8-6 2-6-3-9-8-6ZM12 8V5M12 5c0-3 3-3 5-3 0 3-2 4-5 3Z"/>',
+  book: '<path d="M3 4h5a4 4 0 0 1 4 4v13a4 4 0 0 0-4-2H3ZM21 4h-5a4 4 0 0 0-4 4v13a4 4 0 0 1 4-2h5Z"/>',
+  cart: '<path d="M2 3h3l3 12h11l3-9H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/>',
+  train: '<rect x="5" y="3" width="14" height="15" rx="3"/><path d="M5 10h14M9 14h.01M15 14h.01M8 18l-2 3M16 18l2 3"/>',
+  heart: '<path d="M12 21 4 13C-2 7 6 0 12 7c6-7 14 0 8 6Z"/>',
+  home: '<path d="m3 10 9-7 9 7M5 9v12h14V9M9 21v-8h6v8"/>',
+  phone: '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/>',
+  ticket: '<path d="M3 6h18v4a2 2 0 0 0 0 4v4H3v-4a2 2 0 0 0 0-4ZM15 6v3M15 15v3"/>',
+  wallet: '<path d="M20 8V5H6a3 3 0 0 0 0 6h15v10H6a3 3 0 0 1-3-3V8"/><path d="M21 14h-5v4h5"/>',
+  drop: '<path d="M12 2S5 10 5 15a7 7 0 0 0 14 0c0-5-7-13-7-13Z"/>',
+  pencil: '<path d="m4 16-1 5 5-1L21 7l-4-4ZM14 6l4 4"/>',
+  screen: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  plane: '<path d="m3 10 18-7-7 18-3-8ZM11 13l5-5"/>',
+  gift: '<path d="M4 11v10h16V11M12 7v14"/><path d="M3 7h18v4H3ZM12 7C5 7 5 2 8 2c2 0 4 5 4 5Zm0 0c7 0 7-5 4-5-2 0-4 5-4 5Z"/>',
+  transfer: '<path d="M3 7h17l-4-4M20 7l-4 4M21 17H4l4-4M4 17l4 4"/>',
+  circle: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 17h.01"/>',
+  pet: '<ellipse cx="5" cy="9" rx="2" ry="2.5"/><ellipse cx="9.5" cy="4.5" rx="1.8" ry="2.5"/><ellipse cx="15" cy="4.5" rx="1.8" ry="2.5"/><ellipse cx="19.5" cy="9" rx="2" ry="2.5"/><path d="M8 14c-4 3-3 7 0 7 2 0 2-1 4-1s2 1 4 1c3 0 4-4 0-7-1-1-2-2-4-2s-3 1-4 2Z"/>',
+  medicine: '<path d="m4.5 11.5 7-7a5 5 0 0 1 7 7l-7 7a5 5 0 0 1-7-7ZM8 8l7 7"/>',
+  parcel: '<path d="m3 7 9-5 9 5v10l-9 5-9-5ZM3 7l9 5 9-5M12 12v10M7.5 4.5l9 5"/>',
+  beauty: '<path d="M8 12h8v9H8ZM9 12V6l6-3v9M8 16h8"/>',
+  delivery: '<path d="M3 9h18l-3 12H6ZM3 9l3-4h12l3 4M8 5V2M15 5l2-3M9 14h6"/>',
+  apparel: '<path d="m8 3-6 5 4 4 2-2v11h8V10l2 2 4-4-6-5a4 4 0 0 1-8 0Z"/>',
+};
+
+const CATEGORY_ICON_LABELS = {
+  cup: "杯饮", meal: "餐饮", car: "汽车", bolt: "充电", bag: "购物袋",
+  fruit: "水果", book: "图书", cart: "购物车", train: "公共交通", heart: "健康",
+  home: "住房", phone: "手机", ticket: "票务", wallet: "钱包", drop: "水电燃",
+  pencil: "文具", screen: "数字服务", plane: "旅行", gift: "礼物", transfer: "转账",
+  circle: "其他", pet: "宠物", medicine: "药品", parcel: "包裹物流", beauty: "美容",
+  delivery: "外卖", apparel: "服饰",
 };
 
 function categoryIcon(iconKey) {
-  return `<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">${CATEGORY_ICON_PATHS[iconKey] || CATEGORY_ICON_PATHS.circle}</svg>`;
+  return `<svg class="category-symbol" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${CATEGORY_ICON_PATHS[iconKey] || CATEGORY_ICON_PATHS.circle}</svg>`;
 }
 
 function setCategoryStatus(message = "", kind = "success") {
@@ -2339,8 +2354,8 @@ function categoryAppearanceFields(item, disabled) {
       <legend>图标</legend>
       <div class="category-icon-options">
         ${state.categoryAllowedIcons.map((icon) => `
-          <label title="${escapeHtml(icon)}">
-            <input type="radio" name="icon_key" value="${escapeHtml(icon)}"${item.icon_key === icon ? " checked" : ""} />
+          <label title="${escapeHtml(CATEGORY_ICON_LABELS[icon] || icon)}">
+            <input type="radio" name="icon_key" value="${escapeHtml(icon)}" aria-label="${escapeHtml(CATEGORY_ICON_LABELS[icon] || icon)}"${item.icon_key === icon ? " checked" : ""} />
             <span>${categoryIcon(icon)}</span>
           </label>
         `).join("")}
@@ -2590,7 +2605,7 @@ function closeModal(id) {
   if (trigger && document.contains(trigger)) {
     trigger.focus({ preventScroll: true });
   } else if (id === "categoryModal") {
-    state.ledgerFilterExpanded = true;
+    state.ledgerFilterExpanded = false;
     renderFilters();
     document.querySelector("[data-category-manage]")?.focus({ preventScroll: true });
   }
@@ -3885,9 +3900,13 @@ function renderFilters() {
         ${filterButton("all")}
         ${primaryCategories.map((category) => filterButton(category)).join("")}
         ${selectedIsExtra ? filterButton(state.filter, { current: true }) : ""}
-      </div>
       <button class="ledger-filter-more${state.ledgerFilterExpanded ? " active" : ""}" data-filter-action="toggle-more" type="button" aria-expanded="${state.ledgerFilterExpanded ? "true" : "false"}">
         更多分类 <span aria-hidden="true">${state.ledgerFilterExpanded ? "收起" : `+${otherCategories.length}`}</span>
+      </button>
+      </div>
+      <button class="ledger-category-settings" type="button" data-category-manage aria-label="分类管理：新增、改名、图标与常用排序" title="分类管理：新增、改名、图标与常用排序">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-.6 2.4-2 .9L4 5.6 2 9l1.8 1.7v2.6L2 15l2 3.4 2.4-.7 2 .9L9 21h6l.6-2.4 2-.9 2.4.7 2-3.4-1.8-1.7v-2.6L22 9l-2-3.4-2.4.7-2-.9L15 3Z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="ledger-settings-tip" role="tooltip">分类管理 · 名称、图标与排序</span>
       </button>
     </div>
       <div class="filter-popover${state.ledgerFilterExpanded ? " open" : ""}">
@@ -3913,12 +3932,6 @@ function renderFilters() {
             </div>
           </div>
         ` : ""}
-        <div class="filter-popover-manage">
-          <button type="button" data-category-manage>
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.2h10M3 8h10M3 11.8h10"/><circle cx="6" cy="4.2" r="1.5"/><circle cx="10" cy="11.8" r="1.5"/></svg>
-            管理分类
-          </button>
-        </div>
       </div>
   `;
 }
@@ -4034,7 +4047,7 @@ function renderTransactions() {
           </td>
           <td role="cell" class="td-category">
             <span class="txn-chip${pending ? " is-pending" : ""}">
-              <span class="legend-dot" style="--seg-color:${pending ? "var(--amber-8)" : categoryColor(category)}" aria-hidden="true"></span>
+              <span class="txn-category-icon" style="color:${pending ? "var(--amber-8)" : categoryColor(category)}">${categoryIcon(pending ? "circle" : categoryById(category)?.icon_key)}</span>
               <span>${escapeHtml(pending ? "识别中" : categoryLabel(category))}</span>
             </span>
           </td>
@@ -5702,13 +5715,16 @@ function wireInteractions() {
     const button = event.target.closest("button");
     if (!button) return;
     if (button.hasAttribute("data-category-manage")) {
-      openModal("categoryModal");
       state.ledgerFilterExpanded = false;
+      renderFilters();
+      document.querySelector("[data-category-manage]")?.focus({ preventScroll: true });
+      openModal("categoryModal");
       return;
     }
     if (button.dataset.filterAction === "toggle-more") {
       state.ledgerFilterExpanded = !state.ledgerFilterExpanded;
       renderFilters();
+      document.querySelector('[data-filter-action="toggle-more"]')?.focus({ preventScroll: true });
       window.refreshCfoMotion?.({ scope: "ledger", quiet: true });
       return;
     }
