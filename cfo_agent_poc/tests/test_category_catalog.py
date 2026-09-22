@@ -45,13 +45,13 @@ class CategoryCatalogTests(unittest.TestCase):
 
     def test_create_rejects_duplicate_name_and_invalid_appearance(self) -> None:
         created = create_category(self.db_path, {
-            "display_name": " 宠物 ", "icon_key": "pet", "color_token": "cat-7"
+            "display_name": " 手办周边 ", "icon_key": "parcel", "color_token": "cat-7"
         })
-        self.assertEqual(created["display_name"], "宠物")
-        self.assertEqual(created["icon_key"], "pet")
+        self.assertEqual(created["display_name"], "手办周边")
+        self.assertEqual(created["icon_key"], "parcel")
         self.assertTrue(created["id"].startswith("custom_"))
         with self.assertRaises(CategoryError) as duplicate:
-            create_category(self.db_path, {"display_name": "宠物", "icon_key": "heart", "color_token": "cat-7"})
+            create_category(self.db_path, {"display_name": "手办周边", "icon_key": "heart", "color_token": "cat-7"})
         self.assertEqual(duplicate.exception.code, "duplicate_name")
         with self.assertRaises(CategoryError) as invalid:
             create_category(self.db_path, {"display_name": "健身", "icon_key": "emoji", "color_token": "cat-1"})
@@ -115,14 +115,14 @@ class CategoryCatalogTests(unittest.TestCase):
 
     def test_custom_category_can_only_be_deleted_without_references(self) -> None:
         created = create_category(self.db_path, {
-            "display_name": "宠物", "icon_key": "heart", "color_token": "cat-7"
+            "display_name": "手办周边", "icon_key": "heart", "color_token": "cat-7"
         })
         conn = sqlite3.connect(self.db_path)
         conn.execute(
             """
             insert into transactions
                 (transaction_uid, source, amount, direction, paid_at, category, confidence, raw_text, created_at)
-            values ('tx-pet', 'test', 88, 'outflow', '2026-08-02T12:00:00', ?, 1, '', datetime('now'))
+            values ('tx-figure', 'test', 88, 'outflow', '2026-08-02T12:00:00', ?, 1, '', datetime('now'))
             """,
             (created["id"],),
         )
@@ -133,7 +133,7 @@ class CategoryCatalogTests(unittest.TestCase):
         self.assertEqual(in_use.exception.code, "category_in_use")
         patch_category(self.db_path, created["id"], {"is_enabled": False})
         conn = sqlite3.connect(self.db_path)
-        conn.execute("delete from transactions where transaction_uid = 'tx-pet'")
+        conn.execute("delete from transactions where transaction_uid = 'tx-figure'")
         conn.commit()
         conn.close()
         self.assertTrue(delete_category(self.db_path, created["id"])["ok"])

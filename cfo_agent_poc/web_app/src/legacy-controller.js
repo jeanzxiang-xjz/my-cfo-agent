@@ -2208,6 +2208,7 @@ const CATEGORY_ICON_PATHS = {
   beauty: '<path d="M8 12h8v9H8ZM9 12V6l6-3v9M8 16h8"/>',
   delivery: '<path d="M3 9h18l-3 12H6ZM3 9l3-4h12l3 4M8 5V2M15 5l2-3M9 14h6"/>',
   apparel: '<path d="m8 3-6 5 4 4 2-2v11h8V10l2 2 4-4-6-5a4 4 0 0 1-8 0Z"/>',
+  milk_bottle: '<path d="M10.5 2c0-1 .7-1.5 1.5-1.5s1.5.5 1.5 1.5v2.5h-3Z"/><path d="M8.5 4.5h7"/><rect x="6" y="4.5" width="12" height="16.5" rx="3"/><path d="M9 11h2M9 15h2"/>',
 };
 
 const CATEGORY_ICON_LABELS = {
@@ -2216,7 +2217,7 @@ const CATEGORY_ICON_LABELS = {
   home: "住房", phone: "手机", ticket: "票务", wallet: "钱包", drop: "水电燃",
   pencil: "文具", screen: "数字服务", plane: "旅行", gift: "礼物", transfer: "转账",
   circle: "其他", pet: "宠物", medicine: "药品", parcel: "包裹物流", beauty: "美容",
-  delivery: "外卖", apparel: "服饰",
+  delivery: "外卖", apparel: "服饰", milk_bottle: "奶瓶",
 };
 
 function categoryIcon(iconKey) {
