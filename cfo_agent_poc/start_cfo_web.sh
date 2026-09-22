@@ -20,6 +20,10 @@ if [[ -f cfo_agent_poc/.env ]]; then
   set +a
 fi
 
+# data/ 被 .gitignore 排除（保护隐私财务数据），首次 clone 下来时目录不存在，
+# sqlite3.connect 只建文件不建目录，不兜底会直接报 unable to open database file
+mkdir -p cfo_agent_poc/data
+
 if [[ "${DEMO_MODE}" == "1" ]]; then
   export CFO_DEMO=1
   export CFO_DB_PATH="${PWD}/cfo_agent_poc/data/cfo-demo.sqlite"
