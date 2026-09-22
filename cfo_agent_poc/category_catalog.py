@@ -12,7 +12,7 @@ ALLOWED_ICON_KEYS = (
     "cup", "meal", "car", "bolt", "bag", "fruit", "book", "cart",
     "train", "heart", "home", "phone", "ticket", "wallet", "drop",
     "pencil", "screen", "plane", "gift", "transfer", "circle", "pet",
-    "medicine", "parcel", "beauty", "delivery", "apparel",
+    "medicine", "parcel", "beauty", "delivery", "apparel", "milk_bottle",
 )
 ALLOWED_COLOR_TOKENS = tuple(f"cat-{index}" for index in range(1, 9))
 
@@ -44,6 +44,11 @@ DEFAULT_CATEGORIES = (
     ("leisure_travel", "休闲旅行", "旅行休闲", "plane", "cat-2"),
     ("lottery", "彩票", "彩票", "gift", "cat-3"),
     ("personal_transfer", "个人转账", "个人转账", "transfer", "cat-4"),
+    ("apparel", "服饰装扮", "服饰穿搭", "apparel", "cat-5"),
+    ("pet", "宠物", "宠物", "pet", "cat-6"),
+    ("beauty", "美容美发", "美容美发", "beauty", "cat-7"),
+    ("furniture_home", "家具家装", "家具家装", "home", "cat-1"),
+    ("maternal_child", "母婴亲子", "母婴亲子", "milk_bottle", "cat-2"),
     ("uncategorized", "未分类", "未分类", "circle", "cat-8"),
 )
 
