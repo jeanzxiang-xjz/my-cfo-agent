@@ -25,7 +25,7 @@ FIXED_TAXONOMY = {
     "stationery": "文具用品",
     "ecommerce": "网购",
     "investment": "理财",
-    "healthcare": "医疗",
+    "healthcare": "医疗保健",
     "digital_services": "数字服务",
     "general_shopping": "日常购物",
     "leisure_travel": "休闲旅行",

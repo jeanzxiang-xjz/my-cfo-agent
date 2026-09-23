@@ -145,6 +145,7 @@ let state = {
   merchantFocus: "",
   ledgerFilterExpanded: false,
   ledgerPage: 1,
+  ledgerAmountSort: "date",
   chatHistory: [],
   chatBusy: false,
   syncBusy: false,
@@ -156,6 +157,9 @@ let state = {
   activeEvidenceUid: null,
   evidencePayload: null,
   evidenceEditing: false,
+  evidenceDraftCategory: null,
+  evidenceDraftFields: null,
+  evidenceCategoryPickerOpen: false,
   evidenceSaving: false,
   evidenceDeleteConfirm: false,
   evidenceDeleting: false,
@@ -1567,22 +1571,82 @@ function toLocalInputValue(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
+/** 分类网格开合会重绘整段表单，draftFields 兜住其它字段这时候已经敲进去的值，不然一开分类网格就白打了。 */
+function evidenceFieldDraftValue(field, tx) {
+  const draft = state.evidenceDraftFields;
+  if (draft && field.name in draft) return draft[field.name];
+  return field.name === "paid_at" ? toLocalInputValue(tx.paid_at) : (tx[field.name] ?? "");
+}
+
 function evidenceEditControl(field, tx) {
   const id = `evidenceEdit_${field.name}`;
   if (field.type === "select") {
-    const current = tx[field.name] || "";
-    const blank = field.name === "payment_app" ? `<option value="">未识别</option>` : "";
-    const options = field.name === "category"
-      ? state.categories.filter((item) => item.is_enabled || item.id === current).map((item) => [item.id, `${item.display_name}${item.is_enabled ? "" : "（已停用）"}`, !item.is_enabled])
-      : Object.entries(paymentAppNames).map(([value, label]) => [value, label, false]);
-    const list = options
-      .map(([value, label, disabled]) => `<option value="${escapeHtml(value)}"${value === current ? " selected" : ""}${disabled && value !== current ? " disabled" : ""}>${escapeHtml(label)}</option>`)
+    const current = evidenceFieldDraftValue(field, tx);
+    const list = Object.entries(paymentAppNames)
+      .map(([value, label]) => `<option value="${escapeHtml(value)}"${value === current ? " selected" : ""}>${escapeHtml(label)}</option>`)
       .join("");
-    const inactiveCurrent = field.name === "category" && !categoryById(current)?.is_enabled ? ` data-inactive-current="${escapeHtml(current)}"` : "";
-    return `<select id="${id}" name="${field.name}"${inactiveCurrent}>${blank}${list}</select>`;
+    return `<select id="${id}" name="${field.name}"><option value="">未识别</option>${list}</select>`;
   }
-  const value = field.name === "paid_at" ? toLocalInputValue(tx.paid_at) : (tx[field.name] ?? "");
+  const value = evidenceFieldDraftValue(field, tx);
   return `<input id="${id}" name="${field.name}" type="${field.type}" value="${escapeHtml(String(value))}" ${field.attrs || ""} />`;
+}
+
+/** 切进/切出分类网格前调用，把表单里已经敲的值存住，回来时不至于被重绘冲掉。 */
+function captureEvidenceDraftFields() {
+  const form = $("evidenceDrawer")?.querySelector("[data-evidence-form]");
+  if (!form) return;
+  const data = new FormData(form);
+  const fields = {};
+  for (const { name } of EVIDENCE_EDIT_FIELDS) {
+    if (name === "category") continue;
+    fields[name] = String(data.get(name) ?? "");
+  }
+  state.evidenceDraftFields = fields;
+}
+
+/** 分类字段用图标网格挑选，而不是原生 select：31 个类目靠文字列表滚半天不如认图标快。 */
+function categoryPickerTrigger(currentId) {
+  const cat = categoryById(currentId);
+  const label = cat ? `${cat.display_name}${cat.is_enabled ? "" : "（已停用）"}` : "未分类";
+  return `
+    <input type="hidden" id="evidenceEdit_category" name="category" value="${escapeHtml(currentId || "uncategorized")}" />
+    <button type="button" class="category-picker-trigger" data-evidence-category-trigger>
+      <span class="category-picker-trigger-label">${escapeHtml(label)}</span>
+      <svg class="category-picker-trigger-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+  `;
+}
+
+function categoryPickerGrid(currentId) {
+  const items = state.categories
+    .filter((item) => item.is_enabled || item.id === currentId)
+    .slice()
+    .sort((a, b) => {
+      // 未分类是兜底分类，语义上排在所有人为挑选的分类之后，不参与常用/字母排序。
+      const aUncategorized = a.id === "uncategorized";
+      const bUncategorized = b.id === "uncategorized";
+      if (aUncategorized !== bUncategorized) return aUncategorized ? 1 : -1;
+      if (a.is_primary !== b.is_primary) return a.is_primary ? -1 : 1;
+      if (a.is_primary && b.is_primary) return a.primary_order - b.primary_order;
+      return a.display_name.localeCompare(b.display_name, "zh-Hans-CN");
+    });
+  return `
+    <div class="category-picker-head">
+      <button class="btn btn-quiet btn-sm" type="button" data-evidence-category-back>← 返回</button>
+      <h3>选择分类</h3>
+    </div>
+    <div class="category-picker-grid">
+      ${items.map((item) => `
+        <button type="button" class="category-picker-card${item.id === currentId ? " is-selected" : ""}"
+            data-evidence-category-pick="${escapeHtml(item.id)}"
+            style="--category-color:${categoryColor(item.id)}">
+          <span class="category-picker-card-icon">${categoryIcon(item.icon_key)}</span>
+          <span class="category-picker-card-name">${escapeHtml(item.display_name)}</span>
+          <span class="category-picker-card-sub">${item.transaction_count ?? 0} 笔</span>
+        </button>
+      `).join("")}
+    </div>
+  `;
 }
 
 function parsedFieldsSection(payload, editing) {
@@ -1610,6 +1674,12 @@ function parsedFieldsSection(payload, editing) {
     `;
   }
 
+  const draftCategory = state.evidenceDraftCategory ?? tx.category ?? "uncategorized";
+
+  if (state.evidenceCategoryPickerOpen) {
+    return categoryPickerGrid(draftCategory);
+  }
+
   return `
     <div class="evidence-section-head">
       <h3 id="parsedHeading">校正解析字段</h3>
@@ -1619,7 +1689,7 @@ function parsedFieldsSection(payload, editing) {
         ${EVIDENCE_EDIT_FIELDS.map((field) => `
           <label class="evidence-field" for="evidenceEdit_${field.name}">
             <span>${escapeHtml(field.label)}</span>
-            ${evidenceEditControl(field, tx)}
+            ${field.name === "category" ? categoryPickerTrigger(draftCategory) : evidenceEditControl(field, tx)}
           </label>
         `).join("")}
       </div>
@@ -2244,6 +2314,17 @@ function setCategoryStatus(message = "", kind = "success") {
 const ORDER_ARROWS = {
   up: '<path d="M8 12.5v-9M4.5 7 8 3.5 11.5 7" />',
   down: '<path d="M8 3.5v9M4.5 9 8 12.5 11.5 9" />',
+  // 未激活态：两个方向都还没选，用没有主干的双箭头，别跟上面两个单向箭头撞脸。
+  neutral: '<path d="M4.5 6 8 2.5 11.5 6M4.5 10 8 13.5 11.5 10" />',
+};
+
+/** 金额表头的三态排序：date（默认，按时间）→ desc（金额从大到小）→ asc（从小到大）→ date。 */
+const AMOUNT_SORT_CYCLE = { date: "desc", desc: "asc", asc: "date" };
+const AMOUNT_SORT_ICON = { date: "neutral", desc: "down", asc: "up" };
+const AMOUNT_SORT_NEXT_LABEL = {
+  date: "按金额从大到小排序",
+  desc: "按金额从小到大排序",
+  asc: "取消金额排序，恢复按时间排序",
 };
 
 function orderArrow(direction) {
@@ -2481,7 +2562,11 @@ async function categoryRequest(url, options = {}) {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok || !payload.ok) throw new Error(payload.answer || `请求失败：HTTP ${response.status}`);
+  if (!response.ok || !payload.ok) {
+    const error = new Error(payload.answer || `请求失败：HTTP ${response.status}`);
+    error.code = payload.code;
+    throw error;
+  }
   return payload;
 }
 
@@ -2529,6 +2614,9 @@ async function patchSelectedCategory(fields, action = "保存分类") {
     return true;
   } catch (error) {
     setCategoryStatus(recoveryMessage(error, action), "error");
+    // 主状态条在面板顶部，勾"设为常用"时人盯着的是底部的开关，够不着顶部那行字。
+    // 留一手原始错误，方便调用点针对具体的 code（比如常用超限）在触发点本地再提醒一次。
+    state.categoryLastError = error;
     return false;
   } finally {
     state.categorySaving = false;
@@ -2742,9 +2830,19 @@ function setEvidenceEditing(editing) {
   const host = $("evidenceContent")?.querySelector("[data-parsed-host]");
   if (!host || !state.evidencePayload) return;
   state.evidenceEditing = editing;
+  state.evidenceCategoryPickerOpen = false;
+  state.evidenceDraftCategory = editing ? (state.evidencePayload.transaction?.category ?? "uncategorized") : null;
+  state.evidenceDraftFields = null;
   host.innerHTML = parsedFieldsSection(state.evidencePayload, editing);
   if (editing) host.querySelector("input, select")?.focus({ preventScroll: true });
   else host.querySelector("[data-evidence-edit]")?.focus({ preventScroll: true });
+}
+
+/** 只重绘「校正表单」这一层，用于分类网格的开/关/选择——不重新拿 draft 值，保留用户已改动的其它字段。 */
+function rerenderEvidenceEditView() {
+  const host = $("evidenceContent")?.querySelector("[data-parsed-host]");
+  if (!host || !state.evidencePayload) return;
+  host.innerHTML = parsedFieldsSection(state.evidencePayload, true);
 }
 
 async function saveEvidenceEdits(form) {
@@ -2942,6 +3040,16 @@ function acknowledgeAgentStatus() {
   requestAnimationFrame(() => {
     dot.classList.add("is-acknowledging");
     dot.addEventListener("animationend", () => dot.classList.remove("is-acknowledging"), { once: true });
+  });
+}
+
+/** 「这个操作被挡住了」的通用抖动反馈——常用分类超限时用在开关那一行。 */
+function shakeElement(element) {
+  if (!element || prefersReducedMotion()) return;
+  element.classList.remove("is-shake");
+  requestAnimationFrame(() => {
+    element.classList.add("is-shake");
+    element.addEventListener("animationend", () => element.classList.remove("is-shake"), { once: true });
   });
 }
 
@@ -3885,7 +3993,9 @@ function renderFilters() {
     .map((item) => item.id);
   const otherCategories = state.categories
     .filter((item) => !item.is_primary && (item.is_enabled || referenced.has(item.id)))
-    .map((item) => item.id);
+    .map((item) => item.id)
+    // 未分类是兜底分类，永远排在「更多分类」列表最后一项。
+    .sort((a, b) => (a === "uncategorized") - (b === "uncategorized"));
   const disabledCategories = otherCategories.filter((category) => !categoryById(category)?.is_enabled);
   const enabledOtherCategories = otherCategories.filter((category) => categoryById(category)?.is_enabled);
   const selectedIsExtra = state.filter !== "all" && otherCategories.includes(state.filter);
@@ -3993,6 +4103,19 @@ function renderTransactions() {
   if (state.filter !== "all") transactions = transactions.filter((tx) => (tx.category || "uncategorized") === state.filter);
   // 商户维度只由分析卡片的「看这 N 笔」写入，筛选栏里以一枚可关闭的胶囊呈现。
   if (state.merchantFocus) transactions = transactions.filter((tx) => merchantKey(tx) === state.merchantFocus);
+  if (state.ledgerAmountSort === "desc") transactions = transactions.slice().sort((a, b) => Number(b.amount) - Number(a.amount));
+  else if (state.ledgerAmountSort === "asc") transactions = transactions.slice().sort((a, b) => Number(a.amount) - Number(b.amount));
+
+  const amountSortButton = $("ledgerAmountSort");
+  if (amountSortButton) {
+    const sortState = state.ledgerAmountSort;
+    amountSortButton.dataset.sortState = sortState;
+    amountSortButton.classList.toggle("is-active", sortState !== "date");
+    amountSortButton.setAttribute("aria-pressed", sortState !== "date" ? "true" : "false");
+    amountSortButton.setAttribute("aria-label", AMOUNT_SORT_NEXT_LABEL[sortState]);
+    const icon = amountSortButton.querySelector("svg");
+    if (icon) icon.innerHTML = ORDER_ARROWS[AMOUNT_SORT_ICON[sortState]];
+  }
 
   const totalPages = Math.max(1, Math.ceil(transactions.length / ledgerPageSize));
   state.ledgerPage = Math.min(Math.max(state.ledgerPage, 1), totalPages);
@@ -5209,6 +5332,27 @@ function wireInteractions() {
       setEvidenceEditing(false);
       return;
     }
+    if (event.target.closest("[data-evidence-category-trigger]")) {
+      captureEvidenceDraftFields();
+      state.evidenceCategoryPickerOpen = true;
+      rerenderEvidenceEditView();
+      $("evidenceContent")?.querySelector("[data-evidence-category-back]")?.focus({ preventScroll: true });
+      return;
+    }
+    if (event.target.closest("[data-evidence-category-back]")) {
+      state.evidenceCategoryPickerOpen = false;
+      rerenderEvidenceEditView();
+      $("evidenceContent")?.querySelector("[data-evidence-category-trigger]")?.focus({ preventScroll: true });
+      return;
+    }
+    const categoryPick = event.target.closest("[data-evidence-category-pick]");
+    if (categoryPick) {
+      state.evidenceDraftCategory = categoryPick.dataset.evidenceCategoryPick;
+      state.evidenceCategoryPickerOpen = false;
+      rerenderEvidenceEditView();
+      $("evidenceContent")?.querySelector("[data-evidence-category-trigger]")?.focus({ preventScroll: true });
+      return;
+    }
     if (event.target.closest("[data-evidence-delete]")) {
       state.evidenceDeleteConfirm = true;
       renderEvidence(state.evidencePayload);
@@ -5236,11 +5380,6 @@ function wireInteractions() {
     saveEvidenceEdits(form);
   });
 
-  $("evidenceDrawer").addEventListener("change", (event) => {
-    const select = event.target.closest("select[data-inactive-current]");
-    if (!select || select.value === select.dataset.inactiveCurrent) return;
-    select.querySelector(`option[value="${CSS.escape(select.dataset.inactiveCurrent)}"]`)?.setAttribute("disabled", "");
-  });
 
   $("newCategoryButton").addEventListener("click", () => {
     state.categoryDraftNew = true;
@@ -5327,11 +5466,18 @@ function wireInteractions() {
     if (!event.target.matches("[data-category-primary]")) return;
     const checkbox = event.target;
     const requested = checkbox.checked;
+    const row = checkbox.closest(".category-toggle-row");
     checkbox.disabled = true;
     const saved = await patchSelectedCategory({ is_primary: requested }, "更新常用分类");
     if (!saved && document.contains(checkbox)) {
       checkbox.checked = !requested;
       checkbox.disabled = false;
+      // 顶部状态条离这个开关太远，勾选时人不会往上看。超限是唯一"点了却像没反应"的情形，
+      // 在原地再提醒一次：轻提示 + 抖一下，眼睛不用挪地方。
+      if (state.categoryLastError?.code === "primary_limit") {
+        showToast(state.categoryLastError.message, "error");
+        shakeElement(row);
+      }
     }
   });
 
@@ -5744,6 +5890,13 @@ function wireInteractions() {
     state.ledgerFilterExpanded = false;
     state.ledgerPage = 1;
     renderFilters();
+    renderTransactions();
+    window.refreshCfoMotion?.({ scope: "ledger" });
+  });
+
+  $("ledgerAmountSort").addEventListener("click", () => {
+    state.ledgerAmountSort = AMOUNT_SORT_CYCLE[state.ledgerAmountSort] || "date";
+    state.ledgerPage = 1;
     renderTransactions();
     window.refreshCfoMotion?.({ scope: "ledger" });
   });

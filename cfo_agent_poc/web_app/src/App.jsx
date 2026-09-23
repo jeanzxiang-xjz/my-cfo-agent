@@ -589,7 +589,19 @@ function LedgerPanel() {
               <th scope="col">分类</th>
               <th scope="col">渠道</th>
               <th scope="col" className="col-amount">
-                金额
+                <button
+                  type="button"
+                  id="ledgerAmountSort"
+                  className="ledger-amount-sort"
+                  data-sort-state="date"
+                  aria-pressed="false"
+                  aria-label="按金额从大到小排序"
+                >
+                  <span>金额</span>
+                  <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                    <path d="M4.5 6 8 2.5l3.5 3.5M4.5 10 8 13.5l3.5-3.5" />
+                  </svg>
+                </button>
               </th>
             </tr>
           </thead>
