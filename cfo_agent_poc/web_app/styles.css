@@ -3579,6 +3579,54 @@ body.chat-expanded-open {
 
 .ledger-table thead th.col-amount {
   text-align: right;
+  padding: 0;
+}
+
+.ledger-amount-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 11px var(--sp-5);
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: color var(--dur-2) var(--ease-out);
+}
+
+.ledger-amount-sort svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.55;
+  transition: opacity var(--dur-2) var(--ease-out);
+}
+
+.ledger-amount-sort:hover {
+  color: var(--text-strong);
+}
+
+.ledger-amount-sort:hover svg {
+  opacity: 0.9;
+}
+
+.ledger-amount-sort:focus-visible {
+  outline: 2px solid var(--jade-8);
+  outline-offset: -2px;
+}
+
+.ledger-amount-sort.is-active {
+  color: var(--jade-8);
+}
+
+.ledger-amount-sort.is-active svg {
+  opacity: 1;
 }
 
 .ledger-table th:nth-child(1) {
@@ -4764,6 +4812,18 @@ svg.category-symbol {
   color: var(--text);
   font-size: var(--fs-sm);
   font-weight: 600;
+}
+
+.category-toggle-row.is-shake {
+  animation: categoryToggleShake 0.4s var(--ease-out);
+}
+
+@keyframes categoryToggleShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
 }
 
 .category-switch {
@@ -6559,6 +6619,137 @@ svg.category-symbol {
 
 .evidence-edit-actions .evidence-hint {
   margin-right: auto;
+}
+
+/* ------------------- 分类字段：图标网格挑选 ------------------- */
+
+.category-picker-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.category-picker-head h3 {
+  margin: 0;
+}
+
+.category-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: 32px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--ink-1);
+  color: var(--text-strong);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.category-picker-trigger:hover {
+  border-color: var(--line-strong);
+}
+
+.category-picker-trigger:focus-visible {
+  border-color: var(--jade-8);
+  outline: none;
+}
+
+.category-picker-trigger .category-picker-trigger-label {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-strong);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.category-picker-trigger-caret {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  fill: none;
+  stroke: var(--muted-dim);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.category-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 6px;
+  margin-top: var(--sp-3);
+}
+
+.category-picker-card {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 5px;
+  padding: 10px 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--ink-3);
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out);
+}
+
+.category-picker-card:hover {
+  background: var(--ink-4);
+}
+
+.category-picker-card:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--jade-8);
+}
+
+.category-picker-card.is-selected {
+  border-color: var(--jade-line);
+  box-shadow: 0 0 0 2px var(--jade-8);
+  background: var(--jade-bg);
+}
+
+.category-picker-card-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--category-color) 18%, var(--ink-2));
+  color: var(--category-color);
+}
+
+.category-picker-card-icon .category-symbol {
+  width: 14px;
+  height: 14px;
+}
+
+.category-picker-card-name {
+  width: 100%;
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-picker-card-sub {
+  width: 100%;
+  color: var(--muted-dim);
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 .evidence-hint {

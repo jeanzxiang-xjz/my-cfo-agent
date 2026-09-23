@@ -31,7 +31,7 @@ DEFAULT_CATEGORIES = (
     ("books", "图书", "图书书店", "book", "cat-3"),
     ("ecommerce", "网购", "网购", "cart", "cat-4"),
     ("transport", "交通出行", "交通", "train", "cat-5"),
-    ("healthcare", "医疗", "医疗", "heart", "cat-6"),
+    ("healthcare", "医疗保健", "医疗保健", "heart", "cat-6"),
     ("investment", "理财", "投资理财", "wallet", "cat-7"),
     ("property", "物业服务", "物业生活", "home", "cat-1"),
     ("telecom", "通信充值", "通信充值", "phone", "cat-2"),
