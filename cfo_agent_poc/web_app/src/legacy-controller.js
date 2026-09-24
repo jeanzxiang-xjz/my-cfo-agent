@@ -125,6 +125,7 @@ let state = {
   categoryAllowedColors: [],
   categorySelectedId: null,
   categoryDraftNew: false,
+  categorySearch: "",
   categorySaving: false,
   categoryStatus: "",
   categoryStatusKind: "",
@@ -2412,21 +2413,30 @@ function playCategoryReorder(previousTops) {
 }
 
 function renderCategoryList() {
-  const primary = state.categories.filter((item) => item.is_enabled && item.is_primary).sort((a, b) => a.primary_order - b.primary_order);
-  const other = state.categories.filter((item) => item.is_enabled && !item.is_primary);
-  const disabled = state.categories.filter((item) => !item.is_enabled);
-  const section = (title, items, options = {}) => `
+  const query = state.categorySearch.trim().toLowerCase();
+  const matches = (item) => !query || item.display_name.toLowerCase().includes(query);
+
+  const primaryAll = state.categories.filter((item) => item.is_enabled && item.is_primary).sort((a, b) => a.primary_order - b.primary_order);
+  const otherAll = state.categories.filter((item) => item.is_enabled && !item.is_primary);
+  const disabledAll = state.categories.filter((item) => !item.is_enabled);
+  const primary = primaryAll.filter(matches);
+  const other = otherAll.filter(matches);
+  const disabled = disabledAll.filter(matches);
+
+  // index/total 必须来自筛选前的完整数组：上下移按钮的启禁用状态认的是真实顺序，
+  // 搜索只决定「显示哪几行」，不能顺带把常用分类的真实排名也筛没了。
+  const section = (title, items, allItems, options = {}) => `
     <section class="category-list-section">
       <div class="category-list-title"><h3>${title}</h3><span>${items.length}</span></div>
       ${items.length
-        ? items.map((item, index) => renderCategoryRow(item, { ...options, index, total: items.length })).join("")
-        : `<p class="category-list-empty">这里还没有分类</p>`}
+        ? items.map((item) => renderCategoryRow(item, { ...options, index: allItems.indexOf(item), total: allItems.length })).join("")
+        : `<p class="category-list-empty">${query ? `没有匹配「${escapeHtml(state.categorySearch.trim())}」的分类` : "这里还没有分类"}</p>`}
     </section>
   `;
   $("categoryList").innerHTML = `
-    ${section("常用分类", primary, { primary: true })}
-    ${section("其他分类", other)}
-    ${section("已停用", disabled)}
+    ${section("常用分类", primary, primaryAll, { primary: true })}
+    ${section("其他分类", other, otherAll)}
+    ${section("已停用", disabled, disabledAll)}
   `;
 }
 
@@ -2661,6 +2671,9 @@ function openModal(id) {
     state.categoryDraftNew = false;
     state.categoryConfirm = null;
     state.categoryStatus = "";
+    state.categorySearch = "";
+    const searchInput = $("categorySearchInput");
+    if (searchInput) searchInput.value = "";
     renderCategoryManager();
   }
   requestAnimationFrame(() => {
@@ -5389,6 +5402,11 @@ function wireInteractions() {
     $("categoryModal").classList.add("is-mobile-editing");
     renderCategoryManager();
     $("categoryNameInput")?.focus();
+  });
+
+  $("categorySearchInput").addEventListener("input", (event) => {
+    state.categorySearch = event.target.value;
+    renderCategoryList();
   });
 
   $("categoryModal").addEventListener("click", async (event) => {

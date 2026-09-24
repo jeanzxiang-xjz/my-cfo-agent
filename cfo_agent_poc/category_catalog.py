@@ -14,7 +14,7 @@ ALLOWED_ICON_KEYS = (
     "pencil", "screen", "plane", "gift", "transfer", "circle", "pet",
     "medicine", "parcel", "beauty", "delivery", "apparel", "milk_bottle",
 )
-ALLOWED_COLOR_TOKENS = tuple(f"cat-{index}" for index in range(1, 9))
+ALLOWED_COLOR_TOKENS = tuple(f"cat-{index}" for index in range(1, 23))
 
 # The immutable ids and system names are classification semantics. display_name is
 # the user-facing layer and is only used to seed a new catalog.

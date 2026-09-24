@@ -74,6 +74,28 @@
   --cat-7: #e66767;
   --cat-8: #8a9691;
 
+  /* — 类别色板：深浅扩展 —
+     分类现在能自选颜色（不只是图表用途），8 种不够挑。cat-1..7 的色相已经过上面
+     那次校验，不能碰；这里只给每个色相再搭一支提亮款（cat-9..15，同色相混白 34%）
+     和一支压暗款（cat-16..22，同色相混黑 16%），色相环不变，纯粹加深浅层次。
+     混黑比例故意比混白保守：压太黑会跟卡片深底 #14201c 糊在一起，两档都验过
+     WCAG 相邻对比度 ≥3:1（对深底 #14201c，压暗款普遍 3.2–4.0，最低 3.16）。
+     没有再动 cat-8——它是未分类专用的中性灰，本来就不参与深浅扩展。 */
+  --cat-9: #7cb0ee;
+  --cat-10: #e69170;
+  --cat-11: #67bfa1;
+  --cat-12: #dbae57;
+  --cat-13: #e38cac;
+  --cat-14: #b6aef0;
+  --cat-15: #ee9b9b;
+  --cat-16: #3071c0;
+  --cat-17: #b64b20;
+  --cat-18: #15855e;
+  --cat-19: #a97000;
+  --cat-20: #b3446c;
+  --cat-21: #7970c4;
+  --cat-22: #c15757;
+
   /* — 语义别名 — */
   --bg: var(--ink-1);
   --surface: var(--ink-2);
@@ -4385,6 +4407,62 @@ body.modal-open {
 .category-list-pane {
   border-right: 1px solid var(--line);
   background: var(--ink-1);
+}
+
+.category-search {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-5) var(--sp-5) 0;
+  padding: 0 var(--sp-4);
+  height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--ink-2);
+  transition: border-color var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out);
+}
+
+.category-search:focus-within {
+  border-color: var(--jade-7);
+  box-shadow: 0 0 0 3px rgba(46, 158, 123, 0.12);
+}
+
+.category-search svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: none;
+  stroke: var(--muted-dim);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.category-search input {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: none;
+  color: var(--text-strong);
+  font-size: var(--fs-sm);
+}
+
+.category-search input:focus {
+  outline: 0;
+}
+
+.category-search input:focus-visible {
+  box-shadow: none;
+}
+
+.category-search input::placeholder {
+  color: var(--muted-dim);
+}
+
+.category-search input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .category-list {
