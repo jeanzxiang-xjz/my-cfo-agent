@@ -982,6 +982,19 @@ function CategoryManagementModal() {
 
         <div className="category-workspace">
           <div className="category-list-pane" id="categoryListPane">
+            <div className="category-search">
+              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <circle cx="7" cy="7" r="4.5" />
+                <path d="m13 13-3.3-3.3" />
+              </svg>
+              <input
+                id="categorySearchInput"
+                type="search"
+                placeholder="搜索分类名称…"
+                aria-label="搜索分类名称"
+                autoComplete="off"
+              />
+            </div>
             <div id="categoryList" className="category-list" aria-label="分类列表" />
           </div>
           <div className="category-editor-pane" id="categoryEditorPane">
