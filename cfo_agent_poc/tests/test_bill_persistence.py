@@ -153,6 +153,47 @@ class BillPersistenceTests(unittest.TestCase):
         self.assertEqual(parsed.thing, "Apple 礼品卡")
         self.assertEqual(parsed.classification_source, "manual_override")
 
+    def test_polluted_platform_memory_is_purged_on_startup(self) -> None:
+        conn = bill_store.connect()
+        conn.execute(
+            """
+            insert into merchant_category_memory
+            (merchant_key, merchant, category, thing, confidence, source, updated_at)
+            values ('北京三快在线科技有限公司', '北京三快在线科技有限公司', 'healthcare', '中式按摩SPA', 0.9, 'deepseek', '2026-01-01')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        conn = bill_store.connect()
+        count = conn.execute("select count(*) from merchant_category_memory").fetchone()[0]
+        conn.close()
+        self.assertEqual(count, 0)
+
+    def test_manual_merchant_alias_applies_to_future_captures(self) -> None:
+        conn = bill_store.connect()
+        self.assertTrue(bill_store.remember_merchant_alias(conn, alias="示例便利店", merchant="街角小卖部"))
+        self.assertFalse(bill_store.remember_merchant_alias(conn, alias="美团平台商户", merchant="小象超市"))
+        conn.commit()
+        conn.close()
+
+        parsed = bill_store.store_bill_capture(LOCAL_BILL, source="test", source_hint="wechat")
+
+        self.assertEqual(parsed.merchant, "街角小卖部")
+
+    def test_low_quality_merchant_is_queued_for_model_extraction(self) -> None:
+        bill = "账单详情\n淘\ntb**5\n-65.00\n交易成功\n支付时间\n2026-09-20 00:32:31\n订单号\n2026092000000000000000000001"
+        parsed = bill_store.store_bill_capture(bill, source="test", source_hint="alipay")
+        conn = self.connect()
+        row = conn.execute(
+            "select merchant_quality, extraction_status from transactions where transaction_uid = ?",
+            (parsed.transaction_uid,),
+        ).fetchone()
+        conn.close()
+
+        self.assertEqual(row["merchant_quality"], "masked")
+        self.assertEqual(row["extraction_status"], "pending")
+
     def test_generic_merchant_is_not_saved_to_memory(self) -> None:
         conn = bill_store.connect()
         saved = bill_store.remember_merchant_classification(
