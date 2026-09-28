@@ -14,7 +14,20 @@ ALLOWED_ICON_KEYS = (
     "pencil", "screen", "plane", "gift", "transfer", "circle", "pet",
     "medicine", "parcel", "beauty", "delivery", "apparel", "milk_bottle",
 )
-ALLOWED_COLOR_TOKENS = tuple(f"cat-{index}" for index in range(1, 23))
+# Display order for the color picker: grouped by hue (ascending around the color
+# wheel), light/base/dark together within each hue, neutral last. This keeps
+# similar colors next to each other when the picker renders them in this order,
+# instead of the arbitrary cat-1..cat-22 numbering used for storage/lookup.
+ALLOWED_COLOR_TOKENS = (
+    "cat-15", "cat-7", "cat-22",  # coral
+    "cat-10", "cat-2", "cat-17",  # orange
+    "cat-12", "cat-4", "cat-19",  # gold
+    "cat-11", "cat-3", "cat-18",  # green
+    "cat-9", "cat-1", "cat-16",  # blue
+    "cat-14", "cat-6", "cat-21",  # purple
+    "cat-13", "cat-5", "cat-20",  # rose
+    "cat-8",  # neutral
+)
 
 # The immutable ids and system names are classification semantics. display_name is
 # the user-facing layer and is only used to seed a new catalog.
