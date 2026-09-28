@@ -87,6 +87,16 @@ function categoryColor(key) {
   return CATEGORY_PALETTE[hash % CATEGORY_PALETTE.length];
 }
 
+function leastUsedCategoryColor() {
+  const options = state.categoryAllowedColors;
+  if (!options || !options.length) return "cat-1";
+  const counts = new Map(options.map((color) => [color, 0]));
+  state.categories.forEach((item) => {
+    if (counts.has(item.color_token)) counts.set(item.color_token, counts.get(item.color_token) + 1);
+  });
+  return options.reduce((best, color) => (counts.get(color) < counts.get(best) ? color : best), options[0]);
+}
+
 const ledgerPageSize = 10;
 const budgetStorageKey = "ericCfoBudgets";
 const defaultBudgets = {
@@ -2485,7 +2495,7 @@ function renderCategoryEditor() {
     id: "",
     display_name: "",
     icon_key: state.categoryAllowedIcons[0] || "circle",
-    color_token: state.categoryAllowedColors[0] || "cat-1",
+    color_token: leastUsedCategoryColor(),
     is_enabled: true,
     is_primary: false,
     is_system: false,
