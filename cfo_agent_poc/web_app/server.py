@@ -50,7 +50,7 @@ OWNER_NAME = os.environ.get("CFO_OWNER_NAME", "").strip() or "用户"
 DEBUG_TRACE = os.environ.get("CFO_DEBUG") == "1"
 
 from mail_sync import DEFAULT_SUBJECT, connect_imap, process_mailbox_once_detailed, safe_logout
-from bill_store import capture_overrides, ensure_bill_tables
+from bill_store import capture_overrides, ensure_bill_tables, remember_merchant_alias
 from classification_service import settle_stuck_transactions, start_background_enrichment
 from custom_prompts import (
     create_prompt,
@@ -1883,6 +1883,9 @@ def update_transaction_fields(transaction_uid: str, fields: dict) -> dict:
         assignments = dict(changed)
         assignments["reviewed_at"] = reviewed_at
         # 只有分类被改动时才动分类元数据，改个金额不该把分类来源写成人工。
+        # 人工定了商户，就不再排队让模型补抽商户，免得被模型结果盖掉
+        if "merchant" in changed:
+            assignments.update({"merchant_quality": "ok", "extraction_status": "done"})
         if "category" in changed:
             assignments.update({
                 "classification_source": "manual_override",
@@ -1896,6 +1899,10 @@ def update_transaction_fields(transaction_uid: str, fields: dict) -> dict:
             f"update transactions set {columns} where transaction_uid = ?",
             (*assignments.values(), transaction_uid),
         )
+
+        # 同一家店下次再来，直接用人工改过的名字。平台主体、打码名不会被记成别名。
+        if "merchant" in changed:
+            remember_merchant_alias(conn, alias=row["merchant"], merchant=changed["merchant"])
 
         # 持久层：截图重新解析时靠它回放。没有截图的记录（手工/演示）只改行。
         if capture_hash:

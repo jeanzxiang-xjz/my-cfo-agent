@@ -15,6 +15,7 @@ from cfo_agent_poc.classification_service import (
     build_deepseek_request,
     enrich_pending_transactions,
     parse_deepseek_response,
+    redact_ocr,
     settle_stuck_transactions,
 )
 
@@ -223,3 +224,105 @@ class IndustryDictionaryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExtractionTests(unittest.TestCase):
+    """模型从「只分类」升级为「抽取+分类」后的脱敏和回写优先级。"""
+
+    def test_redact_ocr_hides_identifiers_but_keeps_shop_and_items(self) -> None:
+        excerpt = redact_ocr(
+            "19:26\n令\n消费详情\n示例包子铺\n肉丝木耳保靖粗粉\n订单号\n2608211420488085010882969481\n"
+            "支付方式\n示例银行信用卡（1234）\n联系电话 13812345678\n邮箱 someone@example.com\n"
+            "商家订单号\nT200P3316427943086036974"
+        )
+
+        self.assertIn("示例包子铺", excerpt)
+        self.assertIn("肉丝木耳保靖粗粉", excerpt)
+        for secret in ("2608211420488085010882969481", "1234", "13812345678", "someone@example.com",
+                       "T200P3316427943086036974", "19:26"):
+            self.assertNotIn(secret, excerpt)
+
+    def test_response_drops_platform_entity_merchant(self) -> None:
+        response = {"choices": [{"message": {"content": json.dumps({"results": [
+            {"item_id": 0, "category": "food_delivery", "merchant": "北京三快在线科技有限公司",
+             "thing": "米粉", "confidence": 0.9, "reason": "外卖"},
+        ]}, ensure_ascii=False)}}]}
+
+        parsed = parse_deepseek_response(response, item_count=1)
+
+        self.assertIsNone(parsed[0]["merchant"])
+
+    def _seed(self, db_path: Path, *, merchant: str, quality: str, thing: str | None,
+              category_status: str, overrides: dict[str, str] | None = None) -> None:
+        conn = sqlite3.connect(db_path)
+        ensure_bill_tables(conn)
+        conn.execute(
+            """
+            insert into transactions
+            (transaction_uid, source, amount, direction, paid_at, merchant, thing, category, confidence,
+             raw_capture_hash, raw_text, created_at, classification_source, classification_confidence,
+             classification_status, parse_warnings, merchant_quality, extraction_status)
+            values ('tx-x', 'test', 20, 'outflow', '2026-08-21T14:20:48', ?, ?, ?, 0.9,
+                    'cap-x', '消费详情\n示例包子铺\n肉丝木耳保靖粗粉', datetime('now'), ?, 0.95, ?, '[]', ?, 'pending')
+            """,
+            (merchant, thing, "food_delivery" if category_status == "resolved" else "uncategorized",
+             "local_rule" if category_status == "resolved" else "none", category_status, quality),
+        )
+        for field, value in (overrides or {}).items():
+            conn.execute(
+                "insert into transaction_overrides (raw_capture_hash, field, value, created_at) values ('cap-x', ?, ?, datetime('now'))",
+                (field, value),
+            )
+        conn.commit()
+        conn.close()
+
+    def _row(self, db_path: Path) -> sqlite3.Row:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("select * from transactions where transaction_uid='tx-x'").fetchone()
+        conn.close()
+        return row
+
+    @staticmethod
+    def _model(items: list[dict]) -> list[dict]:
+        assert "ocr_excerpt" in items[0] and "示例包子铺" in items[0]["ocr_excerpt"]
+        return [{"item_id": 0, "category": "food_delivery", "merchant": "示例包子铺",
+                 "thing": "米粉", "confidence": 0.9, "reason": "外卖"}]
+
+    def test_extraction_fills_merchant_and_specific_thing_without_touching_category(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "cfo.sqlite"
+            self._seed(db_path, merchant="美团", quality="platform", thing="饭", category_status="resolved")
+
+            result = enrich_pending_transactions(db_path, classifier=self._model)
+            row = self._row(db_path)
+
+            self.assertEqual(result["extracted"], 1)
+            self.assertEqual(row["merchant"], "示例包子铺")
+            self.assertEqual(row["merchant_quality"], "ok")
+            self.assertEqual(row["thing"], "米粉")
+            self.assertEqual(row["classification_source"], "local_rule")
+            self.assertEqual(row["extraction_status"], "done")
+
+    def test_extraction_never_overwrites_manual_corrections(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "cfo.sqlite"
+            self._seed(db_path, merchant="小象超市", quality="platform", thing="家庭快手菜",
+                       category_status="resolved", overrides={"merchant": "小象超市", "thing": "家庭快手菜"})
+
+            enrich_pending_transactions(db_path, classifier=self._model)
+            row = self._row(db_path)
+
+            self.assertEqual(row["merchant"], "小象超市")
+            self.assertEqual(row["thing"], "家庭快手菜")
+            self.assertEqual(row["extraction_status"], "done")
+
+    def test_extraction_gives_up_after_max_attempts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "cfo.sqlite"
+            self._seed(db_path, merchant="tb**5", quality="masked", thing=None, category_status="resolved")
+
+            for _ in range(MAX_ATTEMPTS):
+                enrich_pending_transactions(db_path, classifier=lambda items: [])
+
+            self.assertEqual(self._row(db_path)["extraction_status"], "failed")

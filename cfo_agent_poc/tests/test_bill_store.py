@@ -3,7 +3,13 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from cfo_agent_poc.bill_store import CATEGORY_RULES, is_generic_merchant_label, normalize_order_id, parse_bill_text
+from cfo_agent_poc.bill_store import (
+    CATEGORY_RULES,
+    is_generic_merchant_label,
+    normalize_order_id,
+    parse_bill_text,
+    store_from_platform_product,
+)
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -136,6 +142,79 @@ not-a-date
 
         self.assertIn("invalid_paid_at", parsed.parse_warnings)
         self.assertIn("invalid_transaction_id", parsed.parse_warnings)
+
+
+class MerchantAndItemExtractionTests(unittest.TestCase):
+    """回溯历史人工校正时发现的几类商户 / 消费内容解析错误。"""
+
+    def test_platform_entity_yields_to_store_named_in_product(self) -> None:
+        parsed = parse_bill_text(load_fixture("alipay_meituan_platform_entity.txt"), source_hint="alipay")
+
+        self.assertEqual(parsed.merchant, "示例粉店")
+        self.assertEqual(parsed.merchant_legal, "北京三快在线科技有限公司")
+        self.assertEqual(parsed.merchant_quality, "ok")
+        # 收款方是平台时，支付宝的「文化休闲」类目不可信，不能拿来分类
+        self.assertNotEqual(parsed.classification_source, "platform_category")
+
+    def test_meituan_monthly_layout_reads_store_and_dishes(self) -> None:
+        parsed = parse_bill_text(load_fixture("meituan_monthly_detail.txt"))
+
+        self.assertEqual(parsed.merchant, "示例包子铺")
+        self.assertEqual(parsed.items, "肉丝木耳保靖粗粉、煮蛋")
+        self.assertEqual(parsed.thing, "肉丝木耳保靖粗粉、煮蛋")
+        self.assertEqual(parsed.category, "food_delivery")
+
+    def test_masked_taobao_seller_is_flagged_and_item_title_extracted(self) -> None:
+        parsed = parse_bill_text(load_fixture("alipay_taobao_items_noise.txt"), source_hint="alipay")
+
+        self.assertEqual(parsed.merchant, "qq**7")
+        self.assertEqual(parsed.merchant_quality, "masked")
+        self.assertEqual(parsed.items, "电影票代买淘票票猫眼优惠万达金")
+        # 商品标题里的「电影票」本身就是强证据，比平台类目优先
+        self.assertEqual(parsed.classification_source, "local_rule")
+        self.assertEqual(parsed.category, "entertainment")
+
+    def test_payee_field_stops_at_page_noise_and_joins_wrapped_name(self) -> None:
+        parsed = parse_bill_text(load_fixture("alipay_payee_noise.txt"), source_hint="alipay")
+
+        self.assertEqual(parsed.merchant, "示例超市")
+        self.assertEqual(parsed.merchant_legal, "示例商业连锁股份有限公司")
+
+    def test_wechat_qr_payee_is_a_merchant_not_a_personal_transfer(self) -> None:
+        parsed = parse_bill_text(load_fixture("wechat_qr_payee_receipt.txt"), source_hint="wechat")
+
+        self.assertEqual(parsed.merchant, "示例饼屋")
+        self.assertEqual(parsed.items, "紫米芋泥肉松")
+        self.assertNotEqual(parsed.category, "personal_transfer")
+
+    def test_wechat_qr_payee_with_person_name_stays_personal_transfer(self) -> None:
+        parsed = parse_bill_text(
+            "交易详情\n-20.00\n扫二维码付款-给张小明\n当前状态\n支付成功\n收款方备注\n二维码收款",
+            source_hint="wechat",
+        )
+
+        self.assertEqual(parsed.merchant, "张小明")
+        self.assertEqual(parsed.category, "personal_transfer")
+
+    def test_amount_labels_are_never_chosen_as_merchant(self) -> None:
+        parsed = parse_bill_text(
+            "账单详情\nPockyt Shop\n-135.57\n交易成功\n订单金额\n135.57元（20.00美元）\n支付时间\n2026-06-18 23:23:48",
+            source_hint="alipay",
+        )
+
+        self.assertEqual(parsed.merchant, "Pockyt Shop")
+
+    def test_store_names_parsed_from_platform_products(self) -> None:
+        cases = {
+            "Super Model超模厨房(长沙岳麓店) )- 美团App- 2608": "Super Model超模厨房",
+            "李發財•现炒盖码饭（麓谷店）-美团Ap P-2606": "李發財•现炒盖码饭",
+            "德天顺盖码饭（沙湾吉联MALL店）外卖订 单": "德天顺盖码饭",
+            "团购-大众点评微信小程 序-2607": None,
+            "美团跑腿-美团App- 26": None,
+        }
+        for product, expected in cases.items():
+            with self.subTest(product=product):
+                self.assertEqual(store_from_platform_product(product), expected)
 
 
 if __name__ == "__main__":

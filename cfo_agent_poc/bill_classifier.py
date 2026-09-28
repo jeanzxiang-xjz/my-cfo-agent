@@ -69,6 +69,8 @@ LOCAL_CATEGORY_RULES = (
     ("groceries", "超市便利", ("超市", "便利店", "小卖部", "食品店", "泡菜店", "购物超市", "连锁便利店", "便利店-消费", "新佳宜", "乐尔乐", "罗森", "全家", "美宜佳", "芙蓉兴盛", "十足集团", "鸣鸣很忙")),
     ("fruit", "水果", ("水果", "鲜果", "果川", "鲜果优品")),
     ("bakery", "烘焙", ("面包", "烘焙", "蛋糕", "鹭岛面包", "面包店")),
+    # 「麦当劳&麦咖啡」要先当快餐认，不然会被下面的「咖啡」截走
+    ("food_delivery", "饭", ("麦当劳", "肯德基")),
     ("coffee_tea", "奶茶", ("沪上阿姨", "精选茶饮", "奶茶", "茶饮", "喜茶", "奈雪", "茶百道", "霸王茶姬")),
     ("coffee_tea", "咖啡", ("咖啡", "瑞幸", "星巴克", "Manner", "manner")),
     ("food_delivery", "饭", ("外卖", "餐饮", "餐馆", "小吃", "点餐订单", "包子", "鸡排", "老粉店", "美食", "饭", "粉大厨", "猪肉粉", "米粉", "盖码饭", "湘菜", "海鲜", "徐记海鲜", "饿了么", "麦当劳", "肯德基")),
@@ -81,7 +83,7 @@ LOCAL_CATEGORY_RULES = (
     ("digital_services", "数字服务", ("applegiftcard", "礼品卡", "会员订阅", "自动续费", "腾讯视频vip", "谱币充值", "云服务", "软件服务", "数字服务")),
     ("general_shopping", "日常购物", ("泡泡玛特", "日杂", "日用百货", "生活用品", "购物")),
     ("leisure_travel", "休闲旅行", ("橘子洲", "酒店", "民宿", "景区", "旅游")),
-    ("lottery", "彩票", ("体彩", "福彩", "福利彩票", "彩票")),
+    ("lottery", "彩票", ("体彩", "福彩", "福利彩票", "彩票", "竞彩", "双色球")),
     ("personal_transfer", "个人转账", ("向个人", "个人收款", "转账给", "个人转账")),
     ("apparel", "服饰装扮", ("优衣库", "ZARA", "H&M", "女装", "男装", "服装店", "鞋类", "箱包")),
     ("pet", "宠物", ("宠物医院", "宠物店", "猫粮", "狗粮", "宠物用品")),
@@ -90,7 +92,33 @@ LOCAL_CATEGORY_RULES = (
     ("maternal_child", "母婴亲子", ("孩子王", "爱婴室", "母婴用品", "奶粉", "尿不湿", "纸尿裤", "童装")),
 )
 
-PERSONAL_TRANSFER_HINTS = ("向个人", "个人收款", "转账给", "个人转账", "扫二维码付款-给", "扫码付款给")
+# 「扫二维码付款-给X」不在这里：回溯发现这类大多是小店经营码（便利店、饭馆、
+# 水果摊），一律判成个人转账会把真实消费藏起来。X 会被当作商户继续走规则，
+# 规则都没中就交给模型结合截图判断。
+PERSONAL_TRANSFER_HINTS = ("向个人", "个人收款", "转账给", "个人转账")
+
+# 支付宝截图底部自带的「账单分类」。它是平台按商户类目给的，粒度粗、偶尔不准，
+# 所以只在一级词和行业词都没命中时当弱证据用。没把握的类目（充值缴费、生活服务、
+# 其他）不收，留给模型。
+PLATFORM_CATEGORY_HINTS = {
+    "餐饮美食": ("food_delivery", "饭"),
+    "日用百货": ("general_shopping", "日常购物"),
+    "数码电器": ("general_shopping", "日常购物"),
+    "交通出行": ("transport", "交通"),
+    "文化休闲": ("entertainment", "文娱消费"),
+    "休闲娱乐": ("entertainment", "文娱消费"),
+    "医疗健康": ("healthcare", "医疗"),
+    "酒店旅游": ("leisure_travel", "休闲旅行"),
+    "爱车养车": ("auto", "爱车养车"),
+    "服饰装扮": ("apparel", "服饰装扮"),
+    "美容美发": ("beauty", "美容美发"),
+    "母婴亲子": ("maternal_child", "母婴亲子"),
+    "宠物": ("pet", "宠物"),
+    "教育培训": ("education", "教育培训"),
+    "住房物业": ("property", "物业服务"),
+    "家居家装": ("furniture_home", "家具家装"),
+    "投资理财": ("investment", "理财"),
+}
 
 
 # 二级「垂类」字典。
@@ -104,7 +132,7 @@ PERSONAL_TRANSFER_HINTS = ("向个人", "个人收款", "转账给", "个人转�
 # 只收录行业映射足够约定俗成的词；含糊的宁可留给模型，也不要在这里猜。
 INDUSTRY_CATEGORY_RULES = (
     ("entertainment", "文娱消费", ("文化发展", "文化传播", "文化传媒", "文化艺术", "娱乐管理", "娱乐有限", "ktv", "量贩", "歌城", "酒吧", "清吧", "livehouse", "影城", "影院", "剧院", "剧场")),
-    ("food_delivery", "餐饮", ("餐饮管理", "餐饮服务", "饮食管理", "食品经营", "餐厅", "食府", "酒楼", "茶餐厅")),
+    ("food_delivery", "饭", ("餐饮管理", "餐饮服务", "饮食管理", "食品经营", "餐厅", "食府", "酒楼", "酒家", "茶餐厅")),
     ("healthcare", "医疗", ("大药房", "医药连锁", "医药有限", "诊所", "口腔", "眼科", "中医馆", "卫生服务")),
     ("education", "教育培训", ("教育科技", "教育咨询", "培训学校", "培训中心", "教育培训")),
     ("leisure_travel", "休闲旅行", ("酒店管理", "旅业", "旅行社", "民宿管理", "健身", "瑜伽", "游泳馆", "运动管理")),
@@ -183,6 +211,23 @@ def industry_result(category: str, thing: str, hint: str) -> ClassificationResul
     )
 
 
+def platform_category_result(platform_category: str | None) -> ClassificationResult | None:
+    """支付宝自带类目命中：弱证据，置信度比行业词再低一档。"""
+    label = re.sub(r"[>〉＞)）\s]+$", "", platform_category or "")
+    mapped = PLATFORM_CATEGORY_HINTS.get(label)
+    if not mapped:
+        return None
+    category, thing = mapped
+    return ClassificationResult(
+        category=category,
+        thing=thing,
+        confidence=0.6,
+        source="platform_category",
+        status="resolved",
+        reason=f"platform_category:{label}",
+    )
+
+
 def classify_locally(
     *,
     merchant: str | None,
@@ -190,6 +235,7 @@ def classify_locally(
     platform: str | None,
     payment_app: str | None,
     text: str,
+    platform_category: str | None = None,
 ) -> ClassificationResult:
     structured_text = normalize_matching_text(merchant, product)
     raw_text = normalize_matching_text(text)
@@ -213,6 +259,10 @@ def classify_locally(
             lowered = hint.lower()
             if lowered in structured_text or lowered in core_text:
                 return industry_result(category, thing, hint)
+
+    platform_result = platform_category_result(platform_category)
+    if platform_result:
+        return platform_result
 
     return ClassificationResult(
         category="uncategorized",

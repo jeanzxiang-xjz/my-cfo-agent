@@ -112,3 +112,47 @@ class LocalClassificationTests(unittest.TestCase):
         )
 
         self.assertEqual(result.category, "groceries")
+
+
+class PlatformCategoryAndQrPayeeTests(unittest.TestCase):
+    def test_alipay_bill_category_is_weak_fallback(self) -> None:
+        result = classify_locally(
+            merchant="某某**店",
+            product=None,
+            platform=None,
+            payment_app="alipay",
+            text="",
+            platform_category="餐饮美食>",
+        )
+
+        self.assertEqual(result.category, "food_delivery")
+        self.assertEqual(result.source, "platform_category")
+        self.assertLess(result.confidence, 0.72)
+
+    def test_rules_beat_platform_category(self) -> None:
+        result = classify_locally(
+            merchant="瑞幸咖啡",
+            product=None,
+            platform=None,
+            payment_app="alipay",
+            text="",
+            platform_category="日用百货",
+        )
+
+        self.assertEqual(result.category, "coffee_tea")
+
+    def test_qr_payment_prefix_alone_is_not_a_personal_transfer(self) -> None:
+        result = classify_locally(
+            merchant="示例鲜花工作室",
+            product=None,
+            platform=None,
+            payment_app="wechat",
+            text="扫二维码付款-给示例鲜花工作室",
+        )
+
+        self.assertNotEqual(result.category, "personal_transfer")
+
+    def test_mcdonalds_is_fast_food_not_coffee(self) -> None:
+        result = classify_locally(merchant="麦当劳&麦咖啡", product=None, platform=None, payment_app=None, text="")
+
+        self.assertEqual(result.category, "food_delivery")
