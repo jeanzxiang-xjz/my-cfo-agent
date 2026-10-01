@@ -411,7 +411,22 @@ kbd {
 .trend-axis-value,
 .trend-axis-label,
 .trend-budget-text,
-.trend-cell-amount,
+.trend-bar-value,
+.trend-cal-budget strong,
+.trend-pager-label,
+.trend-kpis dd,
+.trend-cal-date,
+.trend-cal-amount,
+.trend-week-date,
+.trend-week-amount,
+.trend-day-summary strong,
+.trend-txn-time,
+.trend-txn-amount,
+.trend-compare strong,
+.trend-side-figure strong,
+.trend-side-share strong,
+.trend-category-row strong,
+.trend-side-largest strong,
 .budget-rest-meta small,
 .drawer-header p {
   font-family: var(--font-data);
@@ -6870,8 +6885,7 @@ svg.category-symbol {
 .trend-control {
   display: flex;
   gap: 3px;
-  align-self: start;
-  margin: var(--sp-5) var(--sp-6) 0;
+  align-self: center;
   padding: 3px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
@@ -6900,9 +6914,24 @@ svg.category-symbol {
   box-shadow: var(--shadow-1), var(--edge);
 }
 
+/* 下钻区和右栏的当日明细把内容撑高了，这个弹窗比别的宽一些、高一些 */
+.trend-modal {
+  width: min(1180px, 100%);
+  max-height: min(92dvh, 980px);
+}
+
+.trend-modal-header {
+  align-items: center;
+}
+
+.trend-modal-heading {
+  flex: 1;
+  min-width: 0;
+}
+
 .trend-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 268px;
+  grid-template-columns: minmax(0, 1fr) 300px;
   gap: var(--sp-6);
   padding: var(--sp-5) var(--sp-6) var(--sp-6);
   overflow-y: auto;
@@ -7025,240 +7054,910 @@ svg.category-symbol {
   font-weight: 600;
 }
 
-/* ---- 图表下方的逐期明细：只给「哪一期 / 多少钱 / 超没超」 ---- */
+/* ---- 柱顶金额：只标有数的那几根 ---- */
+.trend-bar-value {
+  fill: var(--muted);
+  font-family: var(--font-data);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  transition: opacity var(--dur-2) var(--ease-out);
+}
 
-/* 列表头：跳转箭头只是个图标，含义得有地方讲一次。分隔线从下面的
-   .trend-breakdown 挪到这里，标题和明细才是同一块。 */
-.trend-breakdown-head {
+.trend-bar-value.is-over {
+  fill: var(--rose-8);
+}
+
+.trend-bar-value.is-selected {
+  fill: var(--text-strong);
+  font-weight: 600;
+}
+
+.trend-chart.has-selection .trend-bar-value:not(.is-selected) {
+  opacity: 0.35;
+}
+
+/* ---- 下钻区：柱子选「哪一期」，这里把那一期摊开 ---- */
+.trend-main {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.trend-detail {
+  display: grid;
+  gap: var(--sp-4);
+  min-width: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--ink-1);
+}
+
+.trend-detail:empty {
+  display: none;
+}
+
+.trend-detail-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
-  margin-top: var(--sp-4);
-  padding-top: var(--sp-4);
-  border-top: 1px solid var(--line);
 }
 
-/* flex + align-items 交给浏览器按真实字体度量对齐，不用 vertical-align
-   负值去猜——那种魔数换个字重/字体就会偏。 */
-.trend-breakdown-hint {
-  display: inline-flex;
+.trend-detail-title,
+.trend-side-head h3 {
+  color: var(--text-strong);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.trend-pager {
+  display: flex;
   align-items: center;
-  color: var(--muted-dim);
-  font-size: var(--fs-micro);
-  line-height: 1.4;
-  white-space: nowrap;
+  gap: 6px;
 }
 
-/* 提示里的那颗箭头必须和格子上的长得一模一样，否则指代不上 */
-.trend-hint-chip {
-  display: inline-grid;
-  flex: none;
+.trend-pager-step {
+  display: grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
-  margin: 0 4px;
+  width: 30px;
+  height: 30px;
+  flex: none;
   border: 1px solid var(--line);
-  border-radius: var(--r-full);
-  background: var(--ink-3);
+  border-radius: var(--r-sm);
+  background: var(--ink-2);
+  color: var(--muted);
+  transition: color var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out);
 }
 
-.trend-hint-chip svg {
-  width: 11px;
-  height: 11px;
+.trend-pager-step svg,
+.trend-txn-chevron svg,
+.trend-detail-jump svg,
+.trend-compare svg {
+  width: 14px;
+  height: 14px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2.1;
+  stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.trend-breakdown {
+.trend-pager-step:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+/* 到头了：未来没有账，最早一笔之前也没有 */
+.trend-pager-step:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.trend-pager-label {
+  min-width: 9.5em;
+  padding: 0 var(--sp-2);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.trend-pager-reset {
+  min-height: 30px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--jade-line);
+  border-radius: var(--r-sm);
+  color: var(--jade-8);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background var(--dur-2) var(--ease-out);
+}
+
+.trend-pager-reset:hover {
+  background: var(--jade-bg);
+}
+
+.trend-kpis {
   display: grid;
-  /* 右侧 34px 让给跳转箭头，列宽要够「8/10-8/16 + 当前」一行放下 */
-  grid-template-columns: repeat(auto-fill, minmax(164px, 1fr));
-  /* 列间距要大于行间距：箭头贴在卡片最右边，2px 的话它和邻卡的日期文字黏成一团，
-     一眼读不出这个箭头属于哪一格。 */
-  gap: 2px 10px;
-  margin: var(--sp-2) 0 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--ink-2);
+}
+
+.trend-kpis > div {
+  min-width: 0;
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.trend-kpis > div + div {
+  border-left: 1px solid var(--line);
+}
+
+.trend-kpis dt {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.trend-kpis dd {
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trend-kpis dd small {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* — 消费日历 —
+   颜色档位跟日预算走（见 trendDayLevel），格子和图例共用同一组变量。 */
+.trend-calendar {
+  display: grid;
+  gap: 6px;
+}
+
+.trend-calendar [data-level="low"] {
+  --level-bg: rgba(56, 170, 131, 0.14);
+  --level-line: rgba(56, 170, 131, 0.4);
+}
+
+.trend-calendar [data-level="mid"] {
+  --level-bg: rgba(56, 170, 131, 0.24);
+  --level-line: rgba(79, 197, 155, 0.5);
+}
+
+.trend-calendar [data-level="over"] {
+  --level-bg: rgba(201, 103, 91, 0.2);
+  --level-line: rgba(242, 154, 142, 0.5);
+}
+
+.trend-cal-weekdays,
+.trend-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.trend-cal-weekdays span {
+  color: var(--muted-dim);
+  font-size: var(--fs-micro);
+  text-align: center;
+}
+
+.trend-cal-day {
+  position: relative;
+  display: grid;
+  align-content: space-between;
+  gap: 2px;
+  min-width: 0;
+  min-height: 58px;
+  padding: 7px 9px;
+  border: 1px solid var(--level-line, var(--line));
+  border-radius: var(--r-sm);
+  background: var(--level-bg, var(--ink-2));
+  font: inherit;
+  text-align: left;
+  transition: border-color var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out);
+}
+
+.trend-cal-day:not(:disabled):not(.is-outside):hover {
+  box-shadow: inset 0 0 0 1px var(--ink-7);
+}
+
+.trend-cal-day.is-selected {
+  border-color: var(--jade-8);
+  box-shadow: 0 0 0 1px var(--jade-8);
+}
+
+.trend-cal-day:focus-visible,
+.trend-week-day:focus-visible {
+  outline: 2px solid var(--jade-8);
+  outline-offset: 2px;
+}
+
+/* 未来的日子还没有账 */
+.trend-cal-day:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.trend-cal-day.is-outside {
+  border-color: transparent;
+  background: none;
+}
+
+.trend-cal-date {
+  color: var(--text);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.trend-cal-day.is-outside .trend-cal-date {
+  color: var(--ink-6);
+  font-weight: 500;
+}
+
+.trend-cal-day.is-today .trend-cal-date {
+  color: var(--jade-8);
+}
+
+.trend-cal-amount {
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.trend-cal-day[data-level="over"] .trend-cal-amount {
+  color: var(--rose-8);
+}
+
+.trend-cal-amount .is-short {
+  display: none;
+}
+
+.trend-cal-amount .is-none {
+  color: var(--muted-dim);
+}
+
+.trend-cal-peak {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 0 5px;
+  border-radius: var(--r-xs);
+  background: var(--amber-bg);
+  color: var(--amber-8);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 16px;
+}
+
+.trend-cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: var(--fs-micro);
+}
+
+.trend-cal-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trend-cal-legend i {
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--level-line, var(--line));
+  border-radius: 3px;
+  background: var(--level-bg, var(--ink-2));
+}
+
+/* 图例的锚：这几档颜色都是相对它算的 */
+.trend-cal-legend .trend-cal-budget {
+  padding-right: 14px;
+  border-right: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.trend-cal-budget strong {
+  color: var(--amber-8);
+  font-weight: 600;
+}
+
+.trend-cal-legend .trend-cal-hint {
+  margin-left: auto;
+  color: var(--muted-dim);
+}
+
+/* — 一周消费：七张日卡，迷你柱按本周最高的那天归一 — */
+.trend-week-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.trend-week-day {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: var(--sp-3) 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--ink-2);
+  font: inherit;
+  transition: border-color var(--dur-2) var(--ease-out), background var(--dur-2) var(--ease-out);
+}
+
+.trend-week-day:not(:disabled):hover {
+  border-color: var(--line-strong);
+}
+
+.trend-week-day.is-selected {
+  border-color: var(--jade-8);
+  background: var(--ink-3);
+  box-shadow: 0 0 0 1px var(--jade-8);
+}
+
+.trend-week-day:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.trend-week-name {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.trend-week-day.is-today .trend-week-name {
+  color: var(--jade-8);
+}
+
+.trend-week-date {
+  color: var(--text);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.trend-week-bar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 100%;
+  height: 64px;
+  margin: 4px 0;
+  border-bottom: 1px solid var(--ink-5);
+}
+
+.trend-week-bar span {
+  width: min(60%, 36px);
+  height: 100%;
+  border-radius: 3px 3px 0 0;
+  background: var(--jade-6);
+  transform: scaleY(var(--bar-ratio, 0));
+  transform-origin: bottom;
+  transition: transform var(--motion-data) var(--ease-out), background var(--dur-2) var(--ease-out);
+}
+
+.trend-week-day.is-selected .trend-week-bar span {
+  background: var(--jade-8);
+}
+
+.trend-week-day.is-over .trend-week-bar span {
+  background: var(--rose-6);
+}
+
+.trend-week-day.is-over.is-selected .trend-week-bar span {
+  background: var(--rose-8);
+}
+
+.trend-week-amount {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trend-week-day.is-over .trend-week-amount {
+  color: var(--rose-8);
+}
+
+.trend-week-count {
+  color: var(--muted-dim);
+  font-size: var(--fs-micro);
+}
+
+/* — 当日交易 — */
+.trend-day-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.trend-day-summary strong {
+  color: var(--text-strong);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+
+.trend-txn-list {
+  display: grid;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
-/* 明细格是一张卡装两个并列按钮：左边点了高亮对应柱子，右边箭头跳到账本。
-   底色和选中态挂在外层 li 上，两个按钮才像同一张卡。 */
-.trend-cell {
+.trend-txn-list > li + li {
+  border-top: 1px solid var(--ink-4);
+}
+
+.trend-txn {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: stretch;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: 10px 6px;
   border-radius: var(--r-sm);
-  transition: background var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out);
-}
-
-/* 描边不是装饰：一张卡里并排坐着两个按钮，没有边界的话右边那个箭头
-   看起来更像下一格的东西。活跃时才画，静止的列表保持干净。 */
-.trend-cell:hover {
-  background: var(--ink-2);
-  box-shadow: inset 0 0 0 1px var(--line);
-}
-
-.trend-cell.is-selected {
-  background: var(--ink-3);
-  box-shadow: inset 2px 0 0 var(--jade-8), inset 0 0 0 1px var(--line);
-}
-
-.trend-cell.is-over.is-selected {
-  box-shadow: inset 2px 0 0 var(--rose-8), inset 0 0 0 1px var(--line);
-}
-
-.trend-cell-body {
-  display: grid;
-  align-content: start;
-  gap: 3px;
-  min-width: 0;
-  padding: 9px 4px 9px 11px;
-  border: 0;
-  border-radius: var(--r-sm) 0 0 var(--r-sm);
-  background: none;
+  color: inherit;
   font: inherit;
   text-align: left;
-  cursor: pointer;
+  transition: background var(--dur-2) var(--ease-out);
 }
 
-/* 箭头常驻。它是这块唯一通往账本的路，藏在 hover 里等于不存在——
-   不把鼠标放上去的人永远不知道能跳，触屏上更是压根够不着。
-   静止态压到 --ink-7：看得出是个控件，又不和金额抢注意力；
-   悬停 / 选中时底下那颗药丸亮成翡翠色，说明按下去会发生事情。 */
-.trend-cell-jump {
-  position: relative;
+.trend-txn.has-time {
+  grid-template-columns: 3.2em auto minmax(0, 1fr) auto auto;
+}
+
+.trend-txn:hover:not(:disabled) {
+  background: var(--ink-3);
+}
+
+.trend-txn:focus-visible {
+  outline: 2px solid var(--jade-7);
+  outline-offset: -2px;
+}
+
+.trend-txn-time {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.trend-txn-icon {
   display: grid;
   place-items: center;
-  width: 34px;
-  padding: 0;
-  border: 0;
-  border-radius: 0 var(--r-sm) var(--r-sm) 0;
-  background: none;
-  color: var(--ink-7);
-  cursor: pointer;
-  transition: color var(--dur-2) var(--ease-out);
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  background: var(--ink-3);
 }
 
-/* 药丸底衬：静止态透明，只占位不发声 */
-.trend-cell-jump::before {
-  content: "";
-  position: absolute;
-  /* inset + margin:auto 而不是靠 place-items——绝对定位的孩子在 grid 容器里
-     怎么对齐各家实现不一致，这个写法在哪都稳。 */
-  inset: 0;
-  width: 22px;
-  height: 22px;
-  margin: auto;
-  border: 1px solid transparent;
-  border-radius: var(--r-full);
-  background: transparent;
-  transition: background var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out);
+.trend-txn-icon .category-symbol {
+  width: 16px;
+  height: 16px;
 }
 
-.trend-cell-jump svg {
-  position: relative;
-  width: 15px;
-  height: 15px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.9;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  transition: transform var(--dur-2) var(--ease-out);
+.trend-txn-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
 
-.trend-cell:hover .trend-cell-jump,
-.trend-cell.is-selected .trend-cell-jump,
-.trend-cell-jump:focus-visible {
-  color: var(--jade-9);
-}
-
-.trend-cell:hover .trend-cell-jump::before,
-.trend-cell.is-selected .trend-cell-jump::before,
-.trend-cell-jump:focus-visible::before {
-  background: var(--jade-bg);
-  border-color: var(--jade-line);
-}
-
-/* 指针正压在箭头上时再亮一档，和「只是悬停整张卡」区分开 */
-.trend-cell-jump:hover::before {
-  background: var(--jade-line);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .trend-cell-jump:hover svg {
-    transform: translateX(1px);
-  }
-}
-
-/* 零金额那一期的占位：只吃栅格宽度，不画任何东西。
-   药丸底衬必须整个去掉——它里面没有箭头，悬停/选中时会剩一个空圆圈。 */
-.trend-cell-jump.is-void {
-  pointer-events: none;
-}
-
-.trend-cell-jump.is-void::before {
-  content: none;
-}
-
-/* 触屏没有 hover，翡翠药丸永远不会浮出来，静止态就得自带一层中性底衬，
-   否则一个裸箭头读不出可点。 */
-@media (hover: none) {
-  .trend-cell-jump:not(.is-void)::before {
-    background: var(--ink-3);
-    border-color: var(--line);
-  }
-}
-
-.trend-cell-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-size: var(--fs-micro);
-  line-height: 1.4;
-}
-
-.trend-cell-flag {
-  padding: 1px 5px;
-  border-radius: var(--r-xs);
-  background: var(--jade-bg);
-  color: var(--jade-8);
-  font-size: var(--fs-micro);
-  font-style: normal;
-  font-weight: 600;
-}
-
-.trend-cell-amount {
-  color: var(--text-strong);
-  font-size: var(--fs-base);
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-.trend-cell-note {
-  color: var(--muted-dim);
-  font-size: var(--fs-micro);
-  line-height: 1.4;
+.trend-txn-main strong,
+.trend-txn-main small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 超预算是这块唯一需要一眼认出的信号，所以给足颜色 */
-.trend-cell.is-over .trend-cell-amount,
-.trend-cell.is-over .trend-cell-note {
+.trend-txn-main strong {
+  color: var(--text-strong);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.trend-txn-main small {
+  color: var(--muted-dim);
+  font-size: var(--fs-micro);
+}
+
+.trend-txn-amount {
+  color: var(--text-strong);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.trend-txn-amount.is-inflow {
+  color: var(--jade-8);
+}
+
+.trend-txn-chevron {
+  display: grid;
+  color: var(--ink-7);
+}
+
+.trend-txn:hover .trend-txn-chevron {
+  color: var(--text);
+}
+
+/* — 下钻区底部：对比 / 去账本 / 口径 — */
+.trend-detail-foot {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.trend-compare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.trend-compare strong {
+  font-size: var(--fs-base);
+  font-weight: 600;
+}
+
+.trend-compare.is-down svg,
+.trend-compare.is-down strong {
+  color: var(--jade-8);
+}
+
+.trend-compare.is-up svg,
+.trend-compare.is-up strong {
   color: var(--rose-8);
 }
 
-.trend-cell.is-empty .trend-cell-amount {
+.trend-detail-jump {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: 40px;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--jade-line);
+  border-radius: var(--r-md);
+  color: var(--jade-8);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  transition: background var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out);
+}
+
+.trend-detail-jump:hover {
+  border-color: var(--jade-7);
+  background: var(--jade-bg);
+}
+
+.trend-detail-jump svg {
+  transition: transform var(--dur-2) var(--ease-out);
+}
+
+.trend-detail-jump:hover svg {
+  transform: translateX(2px);
+}
+
+.trend-detail-jump.is-compact {
+  min-height: 36px;
+  font-size: var(--fs-xs);
+}
+
+.trend-detail-note {
+  color: var(--muted-dim);
+  font-size: var(--fs-micro);
+}
+
+/* ---- 右栏：预算 + 当日明细 / 支出去向 ---- */
+.trend-aside {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-left: var(--sp-6);
+  border-left: 1px solid var(--line);
+  transition: border-color var(--dur-2) var(--ease-out);
+}
+
+/* 看的不是当前期时，整条分栏线转玉色：这一列此刻绑在选中的那一期上 */
+.trend-aside:has(.trend-budget-panel.is-inspecting) {
+  border-color: var(--jade-line);
+}
+
+.trend-side-panel {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-3);
+  min-width: 0;
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--line);
+}
+
+.trend-side-panel:empty {
+  display: none;
+}
+
+.trend-side-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.trend-side-head span,
+.trend-side-date {
   color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.trend-side-date {
+  margin-top: -6px;
+}
+
+.trend-side-figure strong {
+  display: block;
+  color: var(--text-strong);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.trend-side-figure small {
+  color: var(--muted-dim);
+  font-size: var(--fs-micro);
+}
+
+/* 右栏窄，省掉箭头；一天十几笔时在栏内滚，不把预算顶出视野 */
+.trend-side-panel .trend-txn-list {
+  max-height: 264px;
+  margin: 0 -6px;
+  overflow-y: auto;
+}
+
+.trend-side-panel .trend-txn {
+  gap: var(--sp-2);
+  padding: 8px 6px;
+}
+
+.trend-side-panel .trend-txn-chevron {
+  display: none;
+}
+
+.trend-side-empty {
+  padding: var(--sp-2) 0;
+  color: var(--muted-dim);
+  font-size: var(--fs-xs);
+}
+
+.trend-side-share {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--ink-1);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.trend-side-share strong {
+  color: var(--text-strong);
+}
+
+.trend-side-hint {
+  margin-top: -4px;
+  color: var(--muted-dim);
+  font-size: var(--fs-micro);
+  text-align: center;
+}
+
+.trend-category-list {
+  display: grid;
+  gap: var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trend-category-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px var(--sp-3);
+}
+
+.trend-category-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.trend-category-row strong {
+  color: var(--text-strong);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.trend-category-row small {
+  grid-column: 1 / -1;
+  color: var(--muted-dim);
+  font-size: var(--fs-micro);
+}
+
+.trend-side-largest {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--sp-2);
+  width: 100%;
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-xs);
+  text-align: left;
+}
+
+.trend-side-largest small {
+  overflow: hidden;
+  color: var(--muted-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trend-side-largest strong {
+  color: var(--text-strong);
+  font-size: var(--fs-base);
+  font-weight: 600;
+  transition: color var(--dur-2) var(--ease-out);
+}
+
+.trend-side-largest:hover strong {
+  color: var(--jade-8);
+}
+
+/* 右栏 300px 加上日历至少要 ~520px，再窄就单列：图 → 下钻 → 当日 → 预算 */
+@media (max-width: 980px) {
+  .trend-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .trend-aside {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .trend-side-panel {
+    order: -1;
+    margin-top: 0;
+  }
+
+  .trend-budget-panel {
+    margin-top: var(--sp-5);
+    padding-top: var(--sp-5);
+    border-top: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 720px) {
+  .trend-modal-header {
+    flex-wrap: wrap;
+  }
+
+  /* 切换器单独占一行，标题和关闭键留在第一行 */
+  .trend-modal-header .trend-control {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .trend-modal-header .trend-control button {
+    flex: 1;
+  }
+
+  .trend-detail {
+    padding: var(--sp-3);
+  }
+
+  .trend-pager {
+    width: 100%;
+  }
+
+  .trend-pager-label {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .trend-kpis > div {
+    padding: var(--sp-2) var(--sp-3);
+  }
+
+  .trend-kpis dd {
+    font-size: var(--fs-base);
+  }
+
+  /* 12 根月柱的标签在手机上会挤成一团，只留选中那根 */
+  .trend-bar-value:not(.is-selected) {
+    display: none;
+  }
+
+  .trend-cal-weekdays,
+  .trend-cal-grid {
+    gap: 4px;
+  }
+
+  .trend-cal-day {
+    min-height: 48px;
+    padding: 5px;
+  }
+
+  .trend-cal-amount .is-full {
+    display: none;
+  }
+
+  .trend-cal-amount .is-short {
+    display: inline;
+  }
+
+  .trend-cal-peak {
+    top: 6px;
+    right: 5px;
+    width: 6px;
+    height: 6px;
+    padding: 0;
+    border-radius: 50%;
+    background: var(--amber-8);
+    font-size: 0;
+  }
+
+  .trend-cal-legend .trend-cal-hint {
+    display: none;
+  }
+
+  .trend-week-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .trend-txn.has-time {
+    grid-template-columns: 3em minmax(0, 1fr) auto;
+  }
+
+  .trend-txn.has-time .trend-txn-icon,
+  .trend-txn.has-time .trend-txn-chevron {
+    display: none;
+  }
 }
 
 .trend-tooltip {
@@ -7299,18 +7998,11 @@ svg.category-symbol {
   line-height: 1.5;
 }
 
+/* 分栏线挂在外层 .trend-aside 上，预算区和当日明细共用一条 */
 .trend-budget-panel {
   display: grid;
   align-content: start;
   gap: var(--sp-5);
-  padding-left: var(--sp-6);
-  border-left: 1px solid var(--line);
-  transition: border-color var(--dur-2) var(--ease-out);
-}
-
-/* 看的是某一根柱子时，整条分栏线转玉色：这一列此刻绑在选中的那一期上 */
-.trend-budget-panel.is-inspecting {
-  border-color: var(--jade-line);
 }
 
 /* 口径行：这块数字算的是哪一段时间 */
@@ -8164,21 +8856,6 @@ svg.category-symbol {
     border-left: 0;
   }
 
-  .trend-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .trend-budget-panel {
-    padding-left: 0;
-    padding-top: var(--sp-5);
-    border-left: 0;
-    border-top: 1px solid var(--line);
-  }
-
-  .trend-breakdown {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  }
-
   .sync-metrics {
     grid-template-columns: 1fr 1fr;
   }
@@ -8608,17 +9285,6 @@ svg.category-symbol {
   .trend-layout {
     padding-left: var(--sp-4);
     padding-right: var(--sp-4);
-  }
-
-  .trend-control {
-    margin-left: var(--sp-4);
-    margin-right: var(--sp-4);
-  }
-
-  /* 这个宽度下提示行必然折行，白吃两行高度。箭头本身已经常驻可见，
-     配合 title / aria-label 够用了。 */
-  .trend-breakdown-hint {
-    display: none;
   }
 
   .field {

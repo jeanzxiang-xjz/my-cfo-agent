@@ -637,10 +637,21 @@ function TrendModal() {
   return (
     <div id="trendModal" className="modal-backdrop" hidden>
       <section className="modal-shell trend-modal" role="dialog" aria-modal="true" aria-labelledby="trendTitle">
-        <div className="modal-header">
-          <div>
+        <div className="modal-header trend-modal-header">
+          <div className="trend-modal-heading">
             <h2 id="trendTitle">现金流趋势</h2>
             <p id="trendSubtitle">正在读取现金流曲线。</p>
+          </div>
+          <div className="trend-control" id="trendModeControl" role="radiogroup" aria-label="趋势周期">
+            <button className="active" data-trend-mode="day" type="button" role="radio" aria-checked="true" tabIndex={0}>
+              日
+            </button>
+            <button data-trend-mode="week" type="button" role="radio" aria-checked="false" tabIndex={-1}>
+              周
+            </button>
+            <button data-trend-mode="month" type="button" role="radio" aria-checked="false" tabIndex={-1}>
+              月
+            </button>
           </div>
           <button className="modal-close" type="button" data-modal-close="trendModal" aria-label="关闭趋势弹窗">
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -649,86 +660,62 @@ function TrendModal() {
           </button>
         </div>
 
-        <div className="trend-control" id="trendModeControl" role="radiogroup" aria-label="趋势周期">
-          <button className="active" data-trend-mode="day" type="button" role="radio" aria-checked="true" tabIndex={0}>
-            日
-          </button>
-          <button data-trend-mode="week" type="button" role="radio" aria-checked="false" tabIndex={-1}>
-            周
-          </button>
-          <button data-trend-mode="month" type="button" role="radio" aria-checked="false" tabIndex={-1}>
-            月
-          </button>
-        </div>
-
         <div className="trend-layout">
-          <div className="trend-chart-panel">
-            <div id="trendChart" className="trend-chart" />
-            <div id="trendTooltip" className="trend-tooltip" role="status" hidden />
-            {/*
-              跳转箭头是这块唯一「点了会离开弹窗」的控件，光靠一个图标说不清楚。
-              在列表头一次性讲明白两个动作分别通向哪里，省得每张卡都重复一遍。
-              整块 aria-hidden：同样的信息屏幕阅读器已经能从下面 ul 的 aria-label
-              和每个按钮自己的 aria-label 里拿到，读两遍反而啰嗦。
-            */}
-            <div className="trend-breakdown-head" aria-hidden="true">
-              <span className="micro-label">逐期明细</span>
-              <span className="trend-breakdown-hint">
-                点卡片高亮柱子 · 点
-                <span className="trend-hint-chip">
-                  <svg viewBox="0 0 16 16" focusable="false">
-                    <path d="M6 3.5 10.5 8 6 12.5" />
-                  </svg>
-                </span>
-                看当期交易
-              </span>
+          <div className="trend-main">
+            <div className="trend-chart-panel">
+              <div id="trendChart" className="trend-chart" />
+              <div id="trendTooltip" className="trend-tooltip" role="status" hidden />
             </div>
-            <ul id="trendBreakdown" className="trend-breakdown" aria-label="逐期明细，点卡片高亮对应柱子，点箭头查看该期交易" />
+            {/* 柱子选「哪一期」，这里把那一期摊开：月 → 日历，周 → 七天，日 → 当天流水。 */}
+            <section id="trendDetail" className="trend-detail" aria-label="所选时段的消费明细" />
           </div>
 
-          <aside className="trend-budget-panel" id="trendBudgetPanel" aria-label="预算状态">
-            {/* 口径行：这块预算数字算的是哪一段时间。点柱子后跟着选中的那一期走。 */}
-            <p className="budget-scope" aria-live="polite">
-              <span className="budget-scope-dot" aria-hidden="true" />
-              <span className="budget-scope-text" id="trendBudgetScopeText">
-                今日
-              </span>
-              <em className="budget-scope-state" id="trendBudgetScopeState">
-                进行中
-              </em>
-              <button className="budget-scope-reset" id="trendBudgetReset" type="button" hidden>
-                回到当前
-              </button>
-            </p>
-            <div className="budget-kpi">
-              <span id="trendBudgetLabel">月预算</span>
-              <strong id="trendBudgetValue">--</strong>
-            </div>
-            <div className="budget-usage">
-              <div className="budget-usage-head">
-                <span>使用率</span>
-                <strong id="trendBudgetPercent">--</strong>
+          <aside className="trend-aside" aria-label="预算与当日明细">
+            <section className="trend-budget-panel" id="trendBudgetPanel" aria-label="预算状态">
+              {/* 口径行：这块预算数字算的是哪一段时间。点柱子后跟着选中的那一期走。 */}
+              <p className="budget-scope" aria-live="polite">
+                <span className="budget-scope-dot" aria-hidden="true" />
+                <span className="budget-scope-text" id="trendBudgetScopeText">
+                  今日
+                </span>
+                <em className="budget-scope-state" id="trendBudgetScopeState">
+                  进行中
+                </em>
+                <button className="budget-scope-reset" id="trendBudgetReset" type="button" hidden>
+                  回到当前
+                </button>
+              </p>
+              <div className="budget-kpi">
+                <span id="trendBudgetLabel">月预算</span>
+                <strong id="trendBudgetValue">--</strong>
               </div>
-              <div className="meter">
-                <span className="meter-fill" id="trendBudgetProgress" />
-                <span className="meter-tick" aria-hidden="true" />
+              <div className="budget-usage">
+                <div className="budget-usage-head">
+                  <span>使用率</span>
+                  <strong id="trendBudgetPercent">--</strong>
+                </div>
+                <div className="meter">
+                  <span className="meter-fill" id="trendBudgetProgress" />
+                  <span className="meter-tick" aria-hidden="true" />
+                </div>
               </div>
-            </div>
-            <div className="budget-rest">
-              <span id="trendBudgetRestLabel">还能花</span>
-              <strong id="trendBudgetRemaining">--</strong>
-              <div className="budget-rest-meta">
-                <span id="trendBudgetAverageLabel">日均可用</span>
-                <small id="trendBudgetAverage">--</small>
+              <div className="budget-rest">
+                <span id="trendBudgetRestLabel">还能花</span>
+                <strong id="trendBudgetRemaining">--</strong>
+                <div className="budget-rest-meta">
+                  <span id="trendBudgetAverageLabel">日均可用</span>
+                  <small id="trendBudgetAverage">--</small>
+                </div>
               </div>
-            </div>
-            <p className="budget-hint">
-              预算可在
-              <button type="button" className="link-button" data-open-modal="budgetModal">
-                预算配置
-              </button>
-              里调整。
-            </p>
+              <p className="budget-hint">
+                预算可在
+                <button type="button" className="link-button" data-open-modal="budgetModal">
+                  预算配置
+                </button>
+                里调整。
+              </p>
+            </section>
+            <section id="trendSidePanel" className="trend-side-panel" aria-label="当日明细" />
           </aside>
         </div>
       </section>
