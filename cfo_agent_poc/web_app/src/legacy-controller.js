@@ -164,6 +164,10 @@ let state = {
   trendMode: "day",
   activeTrendSeries: [],
   trendSelected: null,
+  // 图表窗口的终点。null = 到今天为止；下钻区翻页翻出窗口时才会被挪到过去。
+  trendWindowEnd: null,
+  // 周 / 月下钻里选中的那一天（dateKey），右栏「当日明细」跟着它走。
+  trendDayKey: null,
   classificationPendingCount: 0,
   activeEvidenceUid: null,
   evidencePayload: null,
@@ -1757,10 +1761,14 @@ function trendModeForPeriod(period = state.period) {
   return budgetKeyForPeriod(period) || "month";
 }
 
-function trendModeTitle(mode = state.trendMode) {
-  if (mode === "day") return "近7天每日支出";
-  if (mode === "week") return "上月至今周度支出";
-  return "本年月度支出";
+/** 图表的读法跟着窗口走：翻到过去时「近 7 天」「本年」就不成立了。 */
+function trendModeTitle(mode = state.trendMode, series = state.activeTrendSeries) {
+  const first = series[0];
+  const last = series[series.length - 1];
+  if (!first || !last) return "现金流趋势";
+  if (mode === "day") return `${formatShortDate(first.start)}–${formatShortDate(last.start)} 每日支出`;
+  if (mode === "week") return `${formatShortDate(first.start)}–${formatShortDate(addDays(last.end, -1))} 周度支出`;
+  return `${first.start.getFullYear()}年月度支出`;
 }
 
 function formatShortDate(date) {
@@ -1772,8 +1780,18 @@ function weekEndFor(cursor) {
   return addDays(cursor, 7 - day);
 }
 
+function trendWindowAnchor() {
+  return startOfDay(state.trendWindowEnd || getAnchorDate());
+}
+
+/**
+ * 窗口规则不变（日：连续 7 天；周：上月 1 号所在周起；月：当年 1 月起），
+ * 只是终点从「今天」换成 trendWindowEnd。current 只标真正包含今天的那一期——
+ * 窗口翻到过去时序列里就没有当前期。
+ */
 function trendSeries(mode = state.trendMode) {
-  const anchor = startOfDay(getAnchorDate());
+  const anchor = trendWindowAnchor();
+  const today = startOfDay(getAnchorDate());
 
   if (mode === "day") {
     return Array.from({ length: 7 }, (_, index) => {
@@ -1786,7 +1804,7 @@ function trendSeries(mode = state.trendMode) {
         // 起止随序列一起带出去，明细格的「查看这段交易」要用它筛账本
         start,
         end,
-        current: index === 6,
+        current: sameDay(start, today),
       };
     });
   }
@@ -1810,10 +1828,10 @@ function trendSeries(mode = state.trendMode) {
         amount: sumBetween(cursor, end),
         start: cursor,
         end,
+        current: cursor <= today && today < end,
       });
       cursor = end;
     }
-    if (series.length) series[series.length - 1].current = true;
     return series;
   }
 
@@ -1827,9 +1845,9 @@ function trendSeries(mode = state.trendMode) {
       amount: sumBetween(cursor, end),
       start: cursor,
       end,
+      current: cursor <= today && today < end,
     });
   }
-  if (series.length) series[series.length - 1].current = true;
   return series;
 }
 
@@ -1924,10 +1942,28 @@ function comparisonBaseline(period = state.period) {
   return null;
 }
 
+/**
+ * 副标题只讲三件事：柱子覆盖哪段时间、红柱是什么意思、点一下会看到什么。
+ * 虚线旁边已经写着预算额，这里不再复述。翻到过去时「近 7 天」不成立了，改报实际日期。
+ */
+function trendSpanText(mode = state.trendMode, series = state.activeTrendSeries) {
+  const first = series[0];
+  const last = series[series.length - 1];
+  if (!state.trendWindowEnd || !first || !last) {
+    if (mode === "day") return "近 7 天";
+    if (mode === "week") return "上月初到本周";
+    return "今年 1 月到本月";
+  }
+  if (mode === "day") return `${formatShortDate(first.start)} – ${formatShortDate(last.start)}`;
+  if (mode === "week") return `${formatShortDate(first.start)} – ${formatShortDate(addDays(last.end, -1))}`;
+  return `${first.start.getFullYear()} 年全年`;
+}
+
 function trendSubtitle(mode = state.trendMode) {
-  if (mode === "day") return "近 7 天每日支出，虚线是日预算。";
-  if (mode === "week") return "上月至今周度支出，虚线是周预算。";
-  return "本年第一月到当前月，虚线是月预算。";
+  const span = trendSpanText(mode);
+  if (mode === "day") return `${span}，每天花了多少，超日预算的标红。点击柱子看明细。`;
+  if (mode === "week") return `${span}，每周花了多少，超周预算的标红。点击柱子看明细。`;
+  return `${span}，每月花了多少，超月预算的标红。点击柱子看明细。`;
 }
 
 function annotateTrendSeries(series, mode = state.trendMode) {
@@ -1957,13 +1993,16 @@ function niceCeil(value) {
 
 function trendChartSvg(series, mode) {
   const width = 760;
-  const height = 300;
-  const padding = { top: 22, right: 16, bottom: 34, left: 56 };
+  // 下面多了一整块下钻区，图表让出一点高度，弹窗里不用滚就能看到两者。
+  const height = 250;
+  // 右侧留一条槽放预算标签：放在图里的话，最右那根（通常就是当前期）的柱顶金额会和它叠在一起。
+  const padding = { top: 26, right: 62, bottom: 34, left: 56 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
   const budget = state.budgets[mode] || 0;
   const rawMax = Math.max(...series.map((item) => item.amount), budget, 1);
-  const topValue = niceCeil(rawMax * 1.08);
+  // 留出柱顶金额标签的位置
+  const topValue = niceCeil(rawMax * 1.15);
   const band = chartWidth / Math.max(series.length, 1);
   const colWidth = Math.min(band * 0.5, 30);
   const xFor = (index) => padding.left + band * index + band / 2;
@@ -1983,7 +2022,10 @@ function trendChartSvg(series, mode) {
   const budgetGuide = budget > 0
     ? `
       <line class="trend-budget-line" x1="${padding.left}" x2="${width - padding.right}" y1="${budgetY.toFixed(1)}" y2="${budgetY.toFixed(1)}"></line>
-      <text class="trend-budget-text" x="${width - padding.right}" y="${Math.max(budgetY - 6, padding.top + 9).toFixed(1)}" text-anchor="end">${escapeHtml(budgetLabel(mode))} ${escapeHtml(formatMoneyShort(budget))}</text>
+      <text class="trend-budget-text" x="${width - padding.right + 8}" y="${clamp(budgetY - 3, padding.top + 9, baseY - 16).toFixed(1)}">
+        <tspan>${escapeHtml(budgetLabel(mode))}</tspan>
+        <tspan x="${width - padding.right + 8}" dy="14">${escapeHtml(formatMoneyShort(budget))}</tspan>
+      </text>
     `
     : "";
 
@@ -1996,18 +2038,23 @@ function trendChartSvg(series, mode) {
       if (point.overBudget) classes.push("over-budget");
       if (point.current) classes.push("is-current");
       const description = `${point.title}，${formatMoney(point.amount)}${point.overBudget ? `，超出${point.budgetLabel}${formatMoney(point.overBy)}` : ""}`;
+      // 零支出那一期不标数：一排「¥0」只会把真正有数的那几根淹掉。
+      const value = point.amount > 0
+        ? `<text class="trend-bar-value${point.overBudget ? " is-over" : ""}" data-trend-index="${index}" x="${x.toFixed(1)}" y="${(baseY - barHeight - 6).toFixed(1)}" text-anchor="middle" aria-hidden="true">${escapeHtml(formatMoneyShort(point.amount))}</text>`
+        : "";
       return `
         <g class="trend-slot" data-trend-index="${index}" tabindex="0" role="button" aria-pressed="false" aria-label="${escapeHtml(description)}">
           <rect class="trend-hit-zone" data-trend-index="${index}" x="${(x - band / 2).toFixed(1)}" y="${padding.top}" width="${band.toFixed(1)}" height="${chartHeight}"></rect>
           <rect class="${classes.join(" ")}" data-trend-index="${index}" x="${(x - colWidth / 2).toFixed(1)}" y="${(baseY - barHeight).toFixed(1)}" width="${colWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="3"></rect>
         </g>
+        ${value}
         <text class="trend-axis-label${point.current ? " is-current" : ""}" data-trend-index="${index}" x="${x.toFixed(1)}" y="${height - 12}" text-anchor="middle">${escapeHtml(point.label)}</text>
       `;
     })
     .join("");
 
   return `
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(trendModeTitle(mode))}">
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(trendModeTitle(mode, series))}">
       ${grid}
       ${budgetGuide}
       ${columns}
@@ -2015,123 +2062,567 @@ function trendChartSvg(series, mode) {
   `;
 }
 
-/**
- * 图表下方的逐期明细。刻意只给三件事：哪一期、花了多少、有没有超预算。
- * 合计 / 均值 / 峰值这类派生指标不放这儿，属于外围模块的事。
- * 每格是个真按钮：点一下会把上面对应的柱子点亮，所以不能是 <li> 纯文本。
- */
-function renderTrendBreakdown(series, mode) {
-  const budget = state.budgets[mode] || 0;
-
-  $("trendBreakdown").innerHTML = series
-    .map((item, index) => {
-      const amount = Math.max(item.amount, 0);
-      const isEmpty = amount <= 0;
-      const note = budget <= 0 ? "未设预算" : item.overBudget ? `超出 ${formatMoney(item.overBy)}` : "未超预算";
-      const classes = ["trend-cell"];
-      if (item.overBudget) classes.push("is-over");
-      if (item.current) classes.push("is-current");
-      if (isEmpty) classes.push("is-empty");
-
-      // 格子本身已经是 button（承载点选高亮），箭头不能嵌在里面，
-      // 只能并列成兄弟节点；选中/悬停的底色因此挂到外层 li 上。
-      //
-      // 零金额那一期跳过去只有一个空账本，所以不给入口——但要留一个同宽的占位，
-      // 不然这张卡的正文会撑到最右，和邻卡的宽度对不齐。
-      const jump = isEmpty
-        ? `<span class="trend-cell-jump is-void" aria-hidden="true"></span>`
-        : `
-          <button
-            class="trend-cell-jump"
-            type="button"
-            data-trend-jump="${index}"
-            title="查看这段时间的交易"
-            aria-label="查看 ${escapeHtml(item.title)} 的交易明细"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" /></svg>
-          </button>
-        `;
-
-      return `
-        <li class="${classes.join(" ")}">
-          <button
-            class="trend-cell-body"
-            type="button"
-            data-trend-index="${index}"
-            aria-pressed="false"
-            aria-label="高亮 ${escapeHtml(item.title)} 对应的柱子，${escapeHtml(formatMoney(amount))}，${escapeHtml(note)}"
-          >
-            <span class="trend-cell-label">
-              ${escapeHtml(item.title)}
-              ${item.current ? '<em class="trend-cell-flag">当前</em>' : ""}
-            </span>
-            <strong class="trend-cell-amount">${escapeHtml(formatMoney(amount))}</strong>
-            <small class="trend-cell-note">${escapeHtml(note)}</small>
-          </button>
-          ${jump}
-        </li>
-      `;
-    })
-    .join("");
-}
-
-/** 当前那一期在序列里的下标（日刻度是最后一根；周/月同理）。 */
+/** 当前那一期在序列里的下标。窗口翻到过去时序列里没有当前期，返回 null。 */
 function currentTrendIndex() {
   const index = state.activeTrendSeries.findIndex((item) => item.current);
   return index >= 0 ? index : null;
 }
 
+/** 默认停在当前期；窗口里没有当前期（翻到了过去）就停在最右那一期。 */
+function defaultTrendIndex() {
+  const current = currentTrendIndex();
+  if (current !== null) return current;
+  return state.activeTrendSeries.length ? state.activeTrendSeries.length - 1 : null;
+}
+
+function trendIndexOf(start) {
+  return state.activeTrendSeries.findIndex((item) => item.start.getTime() === start.getTime());
+}
+
+function selectedTrendItem() {
+  return state.trendSelected === null ? null : state.activeTrendSeries[state.trendSelected] || null;
+}
+
 /**
- * 点选联动：明细格和柱子是同一期数据的两种画法，选中一格另一边必须跟着亮。
+ * 点选联动：柱子、下钻区、右栏是同一期数据的三种画法，选中一处其余跟着换。
  * 这是点击态，不是悬停态——鼠标扫过时依旧什么都不发生（上次去掉悬停联动的结论）。
  *
- * 总有一根柱子是选中的：取消（再点同一格 / 点空白处 / 传 null）一律落回当前那一期，
- * 而不是回到「什么都没选」——右栏永远在算某一期的数，图上就该有对应的高亮。
+ * 总有一根柱子是选中的：取消（再点同一根 / 点空白处 / 传 null）一律落回默认那一期，
+ * 而不是回到「什么都没选」——下钻区和右栏永远在讲某一期，图上就该有对应的高亮。
  *
- * 压暗其余柱子只在「看的不是当前期」时才开：那时才需要一眼定位点的是哪一根；
- * 默认停在当前期时图表保持全亮，趋势本身才读得出来。这条规则和「回到当前」
- * 按钮的显隐是同一个判据，两者同进同退。
+ * 压暗其余柱子只在「看的不是默认那一期」时才开：那时才需要一眼定位点的是哪一根；
+ * 默认态图表保持全亮，趋势本身才读得出来。
+ *
+ * keepDay：数据刷新后回到同一期时，下钻区里选中的那一天也保留。
  */
-function setTrendSelection(index) {
-  const fallback = currentTrendIndex();
+function setTrendSelection(index, { keepDay = false } = {}) {
+  const fallback = defaultTrendIndex();
   const toggled = index === null || index === state.trendSelected ? null : index;
   const next = toggled === null ? fallback : toggled;
   state.trendSelected = next;
+  if (!keepDay) state.trendDayKey = null;
 
-  const atCurrent = next === null || next === fallback;
+  const atDefault = next === null || next === fallback;
   const chart = $("trendChart");
-  chart.classList.toggle("has-selection", !atCurrent);
+  chart.classList.toggle("has-selection", !atDefault);
   chart.querySelectorAll("[data-trend-index]").forEach((node) => {
     const active = Number(node.dataset.trendIndex) === next;
     node.classList.toggle("is-selected", active);
     if (node.classList.contains("trend-slot")) node.setAttribute("aria-pressed", active ? "true" : "false");
   });
 
-  // 选中态挂在外层 li（整张卡变色），aria-pressed 挂在里面那个真按钮上
-  $("trendBreakdown")
-    .querySelectorAll(".trend-cell-body")
-    .forEach((body) => {
-      const active = Number(body.dataset.trendIndex) === next;
-      body.closest(".trend-cell")?.classList.toggle("is-selected", active);
-      body.setAttribute("aria-pressed", active ? "true" : "false");
-    });
-
-  // 右侧预算区是同一份选中态的第三种画法：柱子亮了，数字也要跟着换口径。
   renderTrendBudgetPanel();
-  // 只有翻看别的一期才滚动，否则弹窗一打开就会在窄屏上自己动一下。
-  if (!atCurrent) revealBudgetPanel();
+  renderTrendDrilldown();
+}
+
+/* ---- 翻页：‹ › 一次挪一期，挪出图表窗口时窗口跟着平移 ---- */
+
+/** 某一天所在的那一期，半开区间。 */
+function trendPeriodOf(date, mode = state.trendMode) {
+  const day = startOfDay(date);
+  if (mode === "day") return { start: day, end: addDays(day, 1) };
+  if (mode === "week") {
+    const start = startOfWeek(day);
+    return { start, end: addDays(start, 7) };
+  }
+  const start = new Date(day.getFullYear(), day.getMonth(), 1);
+  return { start, end: addMonths(start, 1) };
+}
+
+function shiftTrendStart(start, mode, step) {
+  if (mode === "day") return addDays(start, step);
+  if (mode === "week") return addDays(start, 7 * step);
+  return addMonths(start, step);
+}
+
+/** 最早一笔有效交易的那天。往回翻不能翻进一片空白里。 */
+function earliestTrendDate() {
+  let earliest = null;
+  analysisTransactions().forEach((tx) => {
+    const paidAt = parseDate(tx.paid_at);
+    if (Number.isNaN(paidAt.getTime())) return;
+    if (!earliest || paidAt < earliest) earliest = paidAt;
+  });
+  return earliest ? startOfDay(earliest) : null;
+}
+
+/** 上界是当前期（未来没有账），下界是最早一笔交易所在的那一期。 */
+function trendCanShift(item, step, mode = state.trendMode) {
+  const target = shiftTrendStart(item.start, mode, step);
+  if (step > 0) return target <= startOfDay(getAnchorDate());
+  const earliest = earliestTrendDate();
+  return Boolean(earliest) && trendPeriodOf(target, mode).end > earliest;
+}
+
+function rebuildTrendSeries() {
+  const mode = state.trendMode;
+  const series = annotateTrendSeries(trendSeries(mode), mode);
+  state.activeTrendSeries = series;
+  $("trendSubtitle").textContent = trendSubtitle(mode);
+  $("trendChart").innerHTML = trendChartSvg(series, mode);
+}
+
+function shiftTrendPeriod(step) {
+  const mode = state.trendMode;
+  const item = selectedTrendItem();
+  if (!item || !trendCanShift(item, step, mode)) return;
+  const target = shiftTrendStart(item.start, mode, step);
+  let index = trendIndexOf(target);
+  if (index < 0) {
+    // 往回翻：目标那期落在窗口最右，它前面整段都看得见；
+    // 往后翻：整窗前移一页，碰到今天就回到默认窗口。
+    const today = startOfDay(getAnchorDate());
+    const targetLastDay = addDays(trendPeriodOf(target, mode).end, -1);
+    let end;
+    if (mode === "month") end = new Date(target.getFullYear(), 11, 31);
+    else if (step < 0) end = targetLastDay;
+    else end = mode === "day" ? addDays(target, 6) : addDays(targetLastDay, 28);
+    state.trendWindowEnd = end >= today ? null : end;
+    rebuildTrendSeries();
+    index = trendIndexOf(target);
+    // 序列整个换了，旧下标指的是别的期，不能让 setTrendSelection 当成「再点一次」去取消。
+    state.trendSelected = null;
+  }
+  if (index >= 0) setTrendSelection(index);
+}
+
+/** 「回到本周 / 本月 / 今天」：窗口和选中一起复位。 */
+function resetTrendToCurrent() {
+  state.trendWindowEnd = null;
+  renderTrendModal();
+}
+
+/* ---- 下钻区：月 → 消费日历，周 → 七天，日 → 当天流水 ---- */
+
+const TREND_WEEKDAY_NAMES = ["日", "一", "二", "三", "四", "五", "六"];
+const TREND_DETAIL_TITLE = { day: "当日交易", week: "一周消费", month: "消费日历" };
+const TREND_RESET_LABEL = { day: "回到今天", week: "回到本周", month: "回到本月" };
+const TREND_PREV_LABEL = { day: "前一天", week: "上一周", month: "上个月" };
+const TREND_NEXT_LABEL = { day: "后一天", week: "下一周", month: "下个月" };
+const TREND_CHEVRON_LEFT = `<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M10 3.5 5.5 8 10 12.5" /></svg>`;
+const TREND_CHEVRON_RIGHT = `<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" /></svg>`;
+const TREND_ARROW_RIGHT = `<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 8h10M9 4l4 4-4 4" /></svg>`;
+
+function yearPrefix(date) {
+  return date.getFullYear() !== getAnchorDate().getFullYear() ? `${date.getFullYear()}年` : "";
+}
+
+function trendDayTitle(date) {
+  return `${yearPrefix(date)}${date.getMonth() + 1}月${date.getDate()}日 · 星期${TREND_WEEKDAY_NAMES[date.getDay()]}`;
+}
+
+function trendPeriodName(item, mode = state.trendMode) {
+  if (mode === "day") return trendDayTitle(item.start);
+  if (mode === "week") {
+    const last = addDays(item.end, -1);
+    return `${yearPrefix(item.start)}${item.start.getMonth() + 1}月${item.start.getDate()}日 – ${last.getMonth() + 1}月${last.getDate()}日`;
+  }
+  return `${item.start.getFullYear()}年${item.start.getMonth() + 1}月`;
+}
+
+function dayInTrendItem(key, item) {
+  if (!key || !item) return false;
+  const day = dateFromKey(key);
+  return day >= item.start && day < item.end;
 }
 
 /**
- * 窄屏下预算区被挤到图表下方，点了柱子却什么都看不见。
+ * 一期里的有效交易和按天汇总。走 transactionsBetween，待订正的交易自然不在里面；
+ * 金额一律净额（退款冲减），和柱子是同一个口径，下钻区的合计才对得上柱顶的数。
+ */
+function trendPeriodStats(item) {
+  const transactions = transactionsBetween(item.start, item.end);
+  const days = new Map();
+  transactions.forEach((tx) => {
+    const key = dateKey(parseDate(tx.paid_at));
+    const entry = days.get(key) || { amount: 0, count: 0 };
+    entry.amount += normalizeAmount(tx);
+    entry.count += 1;
+    days.set(key, entry);
+  });
+  // 日均只除以已经过完的天数，进行中的那一期不能拿整月去摊。
+  const today = startOfDay(getAnchorDate());
+  const elapsedEnd = Math.min(item.end.getTime(), addDays(today, 1).getTime());
+  const elapsedDays = Math.max(1, Math.round((elapsedEnd - item.start.getTime()) / 86400000));
+  const total = sum(transactions);
+  return { transactions, days, total, count: transactions.length, elapsedDays, average: total / elapsedDays };
+}
+
+/** 今天在这期里就是今天；否则停在这期最后一个有账的日子；都没有就是最后一天。 */
+function defaultTrendDayKey(item, stats) {
+  const today = startOfDay(getAnchorDate());
+  if (today >= item.start && today < item.end) return dateKey(today);
+  const keys = [...stats.days.keys()].sort();
+  return keys.length ? keys[keys.length - 1] : dateKey(addDays(item.end, -1));
+}
+
+function byPaidAtDesc(a, b) {
+  return parseDate(b.paid_at) - parseDate(a.paid_at);
+}
+
+function clockTime(date) {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+/** 弹窗里的一笔交易。点开就是交易证据抽屉，抽屉盖在弹窗上面，看完关掉还在原处。 */
+function trendTransactionRow(tx, { showTime = false } = {}) {
+  const title = tx.merchant || tx.product || "未知商户";
+  const pending = tx.classification_status === "pending";
+  const category = tx.category || "uncategorized";
+  const categoryText = pending ? "识别中" : categoryLabel(category);
+  const isInflow = tx.direction === "inflow";
+  const time = clockTime(parseDate(tx.paid_at));
+  const thing = tx.thing && tx.thing !== title ? tx.thing : "";
+  const meta = showTime ? [categoryText, thing].filter(Boolean).join(" · ") : `${categoryText} · ${time}`;
+  const amount = `${isInflow ? "+" : ""}${formatMoney(tx.amount)}`;
+  const uid = tx.transaction_uid || "";
+  return `
+    <li>
+      <button
+        class="trend-txn${showTime ? " has-time" : ""}"
+        type="button"
+        ${uid ? `data-transaction-uid="${escapeHtml(uid)}"` : "disabled"}
+        aria-label="${escapeHtml(`${time} ${title} ${amount}，查看原始账单`)}"
+      >
+        ${showTime ? `<span class="trend-txn-time">${escapeHtml(time)}</span>` : ""}
+        <span class="trend-txn-icon" style="color:${pending ? "var(--amber-8)" : categoryColor(category)}">${categoryIcon(pending ? "circle" : categoryById(category)?.icon_key)}</span>
+        <span class="trend-txn-main">
+          <strong title="${escapeHtml(title)}">${escapeHtml(title)}</strong>
+          <small title="${escapeHtml(meta)}">${escapeHtml(meta)}</small>
+        </span>
+        <span class="trend-txn-amount${isInflow ? " is-inflow" : ""}">${escapeHtml(amount)}</span>
+        <span class="trend-txn-chevron">${TREND_CHEVRON_RIGHT}</span>
+      </button>
+    </li>
+  `;
+}
+
+function trendPagerHtml(item, mode) {
+  return `
+    <div class="trend-pager" role="group" aria-label="切换查看的时段">
+      <button class="trend-pager-step" type="button" data-trend-shift="-1" aria-label="${TREND_PREV_LABEL[mode]}" title="${TREND_PREV_LABEL[mode]}" ${trendCanShift(item, -1, mode) ? "" : "disabled"}>${TREND_CHEVRON_LEFT}</button>
+      <span class="trend-pager-label" aria-live="polite">${escapeHtml(trendPeriodName(item, mode))}</span>
+      <button class="trend-pager-step" type="button" data-trend-shift="1" aria-label="${TREND_NEXT_LABEL[mode]}" title="${TREND_NEXT_LABEL[mode]}" ${trendCanShift(item, 1, mode) ? "" : "disabled"}>${TREND_CHEVRON_RIGHT}</button>
+      ${item.current ? "" : `<button class="trend-pager-reset" type="button" data-trend-reset>${TREND_RESET_LABEL[mode]}</button>`}
+    </div>
+  `;
+}
+
+function trendKpisHtml(stats, mode) {
+  return `
+    <dl class="trend-kpis">
+      <div><dt>${mode === "week" ? "当周净支出" : "当月净支出"}</dt><dd>${escapeHtml(formatMoney(stats.total))}</dd></div>
+      <div><dt>日均净支出</dt><dd>${escapeHtml(formatMoney(stats.average))}</dd></div>
+      <div><dt>交易记录</dt><dd>${stats.count}<small> 笔</small></dd></div>
+    </dl>
+  `;
+}
+
+/**
+ * 和上一期比。进行中的那一期只和上一期的同期比（口径同 comparisonBaseline），
+ * 上一期压根没有记录时不给结论——「比上月少花 ¥3,000」在账本还没开始记的月份是句假话。
+ */
+function trendComparisonHtml(item, stats, mode) {
+  if (mode === "day") return "";
+  const previousStart = shiftTrendStart(item.start, mode, -1);
+  let previousEnd = item.start;
+  if (item.current) previousEnd = new Date(Math.min(previousEnd.getTime(), addDays(previousStart, stats.elapsedDays).getTime()));
+  const previous = transactionsBetween(previousStart, previousEnd);
+  if (!previous.length) return "";
+  const label = `较${mode === "week" ? "上一周" : `${previousStart.getMonth() + 1}月`}${item.current ? "同期" : ""}`;
+  const diff = stats.total - sum(previous);
+  if (Math.abs(diff) < 0.005) return `<p class="trend-compare is-flat">${label}持平</p>`;
+  const less = diff < 0;
+  const arrow = less ? "M8 3v10M4 9l4 4 4-4" : "M8 13V3M4 7l4-4 4 4";
+  return `
+    <p class="trend-compare ${less ? "is-down" : "is-up"}">
+      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="${arrow}" /></svg>
+      ${label}${less ? "少" : "多"}支出 <strong>${escapeHtml(formatMoney(Math.abs(diff)))}</strong>
+    </p>
+  `;
+}
+
+/** 日历格的颜色跟日预算走，和柱子「超预算变红」是同一套语义；改了预算颜色跟着变。 */
+function trendDayLevel(entry) {
+  if (!entry) return "none";
+  const budget = state.budgets.day || 0;
+  if (budget > 0 && entry.amount > budget) return "over";
+  if (budget > 0 && entry.amount > budget / 2) return "mid";
+  return "low";
+}
+
+function trendDayAriaLabel(day, entry) {
+  return `${day.getMonth() + 1}月${day.getDate()}日，${entry ? `${formatMoney(entry.amount)}，${entry.count} 笔` : "没有记录"}`;
+}
+
+function trendMonthCalendarHtml(item, stats) {
+  const today = startOfDay(getAnchorDate());
+  const first = startOfWeek(item.start);
+  const lastDay = addDays(item.end, -1);
+  const weeks = Math.round((startOfWeek(lastDay) - first) / (7 * 86400000)) + 1;
+  let peakKey = null;
+  stats.days.forEach((entry, key) => {
+    if (entry.amount > 0 && (!peakKey || entry.amount > stats.days.get(peakKey).amount)) peakKey = key;
+  });
+
+  const cells = [];
+  for (let index = 0; index < weeks * 7; index += 1) {
+    const day = addDays(first, index);
+    // 邻月只留个淡色日期：看得出月份从周几开始，又不会被误当成本月的数。
+    if (day < item.start || day >= item.end) {
+      cells.push(`<span class="trend-cal-day is-outside" aria-hidden="true"><span class="trend-cal-date">${formatShortDate(day)}</span></span>`);
+      continue;
+    }
+    const key = dateKey(day);
+    const entry = stats.days.get(key);
+    const selected = key === state.trendDayKey;
+    const classes = ["trend-cal-day"];
+    if (selected) classes.push("is-selected");
+    if (sameDay(day, today)) classes.push("is-today");
+    cells.push(`
+      <button
+        class="${classes.join(" ")}"
+        type="button"
+        data-trend-day="${key}"
+        data-level="${trendDayLevel(entry)}"
+        aria-pressed="${selected ? "true" : "false"}"
+        tabindex="${selected ? 0 : -1}"
+        aria-label="${escapeHtml(trendDayAriaLabel(day, entry))}${key === peakKey ? "，本月最高" : ""}"
+        ${day > today ? "disabled" : ""}
+      >
+        <span class="trend-cal-date">${day.getDate()}</span>
+        ${key === peakKey ? `<em class="trend-cal-peak">最高</em>` : ""}
+        <span class="trend-cal-amount">
+          ${entry
+            ? `<span class="is-full">${escapeHtml(formatMoney(entry.amount))}</span><span class="is-short">${escapeHtml(formatMoneyShort(entry.amount))}</span>`
+            : `<span class="is-none">–</span>`}
+        </span>
+      </button>
+    `);
+  }
+
+  // 图例里预算额单独成一格放在最前：写成「超日预算 ¥500」会被读成「超了 ¥500」。
+  // 后面几档只讲金额区间，和这个预算额的关系一眼能对上。
+  const budget = state.budgets.day || 0;
+  const half = formatMoneyShort(budget / 2);
+  return `
+    <div class="trend-calendar">
+      <div class="trend-cal-weekdays" aria-hidden="true">${RANGE_WEEKDAYS.map((name) => `<span>${name}</span>`).join("")}</div>
+      <div class="trend-cal-grid" role="group" aria-label="${escapeHtml(trendPeriodName(item, "month"))}每日支出，方向键切换日期">${cells.join("")}</div>
+      <div class="trend-cal-legend">
+        <span class="trend-cal-budget">日预算 <strong>${escapeHtml(formatMoneyShort(budget))}</strong></span>
+        <span data-level="none"><i aria-hidden="true"></i>无记录</span>
+        <span data-level="low"><i aria-hidden="true"></i>≤ ${escapeHtml(half)}</span>
+        <span data-level="mid"><i aria-hidden="true"></i>${escapeHtml(half)} – ${escapeHtml(formatMoneyShort(budget))}</span>
+        <span data-level="over"><i aria-hidden="true"></i>&gt; ${escapeHtml(formatMoneyShort(budget))} 超预算</span>
+        <span class="trend-cal-hint">点日期看当日明细</span>
+      </div>
+    </div>
+  `;
+}
+
+function trendWeekStripHtml(item, stats) {
+  const today = startOfDay(getAnchorDate());
+  const budget = state.budgets.day || 0;
+  const days = Array.from({ length: 7 }, (_, index) => addDays(item.start, index));
+  const peak = Math.max(0, ...days.map((day) => stats.days.get(dateKey(day))?.amount || 0));
+  return `
+    <div class="trend-week-strip" role="group" aria-label="${escapeHtml(trendPeriodName(item, "week"))}每日支出，方向键切换日期">
+      ${days.map((day) => {
+        const key = dateKey(day);
+        const entry = stats.days.get(key);
+        const amount = entry?.amount || 0;
+        const selected = key === state.trendDayKey;
+        const classes = ["trend-week-day"];
+        if (selected) classes.push("is-selected");
+        if (sameDay(day, today)) classes.push("is-today");
+        if (budget > 0 && amount > budget) classes.push("is-over");
+        const ratio = peak > 0 ? clamp(amount / peak, 0, 1) : 0;
+        return `
+          <button
+            class="${classes.join(" ")}"
+            type="button"
+            data-trend-day="${key}"
+            aria-pressed="${selected ? "true" : "false"}"
+            tabindex="${selected ? 0 : -1}"
+            aria-label="${escapeHtml(`星期${TREND_WEEKDAY_NAMES[day.getDay()]}，${trendDayAriaLabel(day, entry)}`)}"
+            ${day > today ? "disabled" : ""}
+          >
+            <span class="trend-week-name">周${TREND_WEEKDAY_NAMES[day.getDay()]}</span>
+            <span class="trend-week-date">${formatShortDate(day)}</span>
+            <span class="trend-week-bar" aria-hidden="true"><span style="--bar-ratio:${ratio.toFixed(4)}"></span></span>
+            <strong class="trend-week-amount">${entry ? escapeHtml(formatMoney(amount)) : "–"}</strong>
+            <small class="trend-week-count">${entry ? `${entry.count} 笔` : "无记录"}</small>
+          </button>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function trendDayListHtml(stats) {
+  const transactions = stats.transactions.slice().sort(byPaidAtDesc);
+  if (!transactions.length) {
+    return emptyState({ icon: "empty", title: "这一天没有消费记录", hint: "翻到别的日子看看，或者点上面的柱子。" });
+  }
+  return `<ol class="trend-txn-list is-timeline">${transactions.map((tx) => trendTransactionRow(tx, { showTime: true })).join("")}</ol>`;
+}
+
+function trendDetailHtml(item, stats) {
+  const mode = state.trendMode;
+  let body = "";
+  if (mode === "day") {
+    body = `
+      <p class="trend-day-summary">
+        <span>${stats.count} 笔</span>
+        <span aria-hidden="true">·</span>
+        <strong>${escapeHtml(formatMoney(stats.total))}</strong>
+      </p>
+      ${trendDayListHtml(stats)}
+    `;
+  } else {
+    body = `${trendKpisHtml(stats, mode)}${mode === "month" ? trendMonthCalendarHtml(item, stats) : trendWeekStripHtml(item, stats)}`;
+  }
+  const jumpText = mode === "day" ? "到账本里看这一天" : `查看这${mode === "week" ? "一周" : "个月"}全部 ${stats.count} 笔交易`;
+  return `
+    <header class="trend-detail-head">
+      <h3 class="trend-detail-title">${TREND_DETAIL_TITLE[mode]}</h3>
+      ${trendPagerHtml(item, mode)}
+    </header>
+    ${body}
+    <footer class="trend-detail-foot">
+      ${trendComparisonHtml(item, stats, mode)}
+      ${stats.count ? `<button class="trend-detail-jump" type="button" data-trend-jump="period">${jumpText}${TREND_ARROW_RIGHT}</button>` : ""}
+      <p class="trend-detail-note">按有效账本记录统计，待订正的交易不计入。</p>
+    </footer>
+  `;
+}
+
+/** 周 / 月：右栏是下钻区里选中那一天的流水。 */
+function trendDayDetailHtml(stats, mode) {
+  const key = state.trendDayKey;
+  const day = dateFromKey(key);
+  const entry = stats.days.get(key);
+  const transactions = stats.transactions.filter((tx) => dateKey(parseDate(tx.paid_at)) === key).sort(byPaidAtDesc);
+  const share = entry && entry.amount > 0 && stats.total > 0 ? (entry.amount / stats.total) * 100 : null;
+  return `
+    <header class="trend-side-head">
+      <h3>当日明细</h3>
+      ${entry ? `<span>${entry.count} 笔</span>` : ""}
+    </header>
+    <p class="trend-side-date">${escapeHtml(trendDayTitle(day))}</p>
+    <div class="trend-side-figure">
+      <strong>${escapeHtml(formatMoney(entry?.amount || 0))}</strong>
+      <small>当日净支出</small>
+    </div>
+    ${transactions.length
+      ? `<ol class="trend-txn-list">${transactions.map((tx) => trendTransactionRow(tx)).join("")}</ol>`
+      : `<p class="trend-side-empty">这一天没有消费记录。</p>`}
+    ${share === null ? "" : `
+      <p class="trend-side-share">
+        <span>占${mode === "week" ? "当周" : "当月"}支出</span>
+        <strong>${share.toFixed(1)}%</strong>
+      </p>
+    `}
+    ${transactions.length ? `
+      <button class="trend-detail-jump is-compact" type="button" data-trend-jump="day">到账本里看这一天${TREND_ARROW_RIGHT}</button>
+      <p class="trend-side-hint">点交易可追溯原始账单</p>
+    ` : ""}
+  `;
+}
+
+/** 日：右栏是这一天的钱流向了哪些分类。退款不算「去向」，先滤掉。 */
+function trendCategoryBreakdownHtml(stats) {
+  const spending = stats.transactions.filter((tx) => tx.direction !== "inflow");
+  const entries = Object.entries(groupByCategory(spending)).sort((a, b) => b[1].amount - a[1].amount);
+  const total = entries.reduce((acc, [, value]) => acc + value.amount, 0);
+  const head = `
+    <header class="trend-side-head">
+      <h3>当日支出去向</h3>
+      <span>按消费分类</span>
+    </header>
+  `;
+  if (!entries.length || total <= 0) return `${head}<p class="trend-side-empty">这一天没有支出。</p>`;
+  const top = largest(spending);
+  return `
+    ${head}
+    <ul class="trend-category-list">
+      ${entries.map(([category, value]) => {
+        const share = (value.amount / total) * 100;
+        const color = categoryColor(category);
+        return `
+          <li class="trend-category-row">
+            <span class="trend-category-name"><span class="legend-dot" style="--seg-color:${color}" aria-hidden="true"></span>${escapeHtml(categoryLabel(category))}</span>
+            <strong>${escapeHtml(formatMoney(value.amount))}</strong>
+            <small>${value.count} 笔 · ${share.toFixed(1)}%</small>
+            <div class="category-track" aria-hidden="true"><span style="--category-ratio:${(clamp(share, 0, 100) / 100).toFixed(4)};--seg-color:${color}"></span></div>
+          </li>
+        `;
+      }).join("")}
+    </ul>
+    ${top && positiveSpend(top) > 0 ? `
+      <button class="trend-side-largest" type="button" ${top.transaction_uid ? `data-transaction-uid="${escapeHtml(top.transaction_uid)}"` : "disabled"}>
+        <span>最大单笔</span>
+        <small>${escapeHtml(top.merchant || top.product || "未知商户")}</small>
+        <strong>${escapeHtml(formatMoney(top.amount))}</strong>
+      </button>
+    ` : ""}
+  `;
+}
+
+function renderTrendDrilldown() {
+  const item = selectedTrendItem();
+  const detail = $("trendDetail");
+  const side = $("trendSidePanel");
+  if (!item) {
+    detail.innerHTML = "";
+    side.innerHTML = "";
+    return;
+  }
+  const stats = trendPeriodStats(item);
+  const mode = state.trendMode;
+  if (mode !== "day" && !dayInTrendItem(state.trendDayKey, item)) state.trendDayKey = defaultTrendDayKey(item, stats);
+  detail.innerHTML = trendDetailHtml(item, stats);
+  side.innerHTML = mode === "day" ? trendCategoryBreakdownHtml(stats) : trendDayDetailHtml(stats, mode);
+}
+
+/** 选日只换右栏，下钻区就地改选中态——整块重画会把键盘焦点弄丢。 */
+function selectTrendDay(key) {
+  const item = selectedTrendItem();
+  if (!item || state.trendMode === "day" || !dayInTrendItem(key, item)) return;
+  if (dateFromKey(key) > startOfDay(getAnchorDate())) return;
+  state.trendDayKey = key;
+  $("trendDetail").querySelectorAll("[data-trend-day]").forEach((node) => {
+    const active = node.dataset.trendDay === key;
+    node.classList.toggle("is-selected", active);
+    node.setAttribute("aria-pressed", active ? "true" : "false");
+    node.tabIndex = active ? 0 : -1;
+  });
+  $("trendSidePanel").innerHTML = trendDayDetailHtml(trendPeriodStats(item), state.trendMode);
+}
+
+/**
+ * 窄屏下右栏被挤到下钻区后面，点了日期却看不到明细。
  * 只在它整块落在视口外时才滚，且用 nearest —— 已经看得见就不要动画面。
  */
-function revealBudgetPanel() {
-  const panel = $("trendBudgetPanel");
+function revealTrendSidePanel() {
+  const panel = $("trendSidePanel");
   if (!panel) return;
   const rect = panel.getBoundingClientRect();
   if (rect.top < window.innerHeight - 72 && rect.bottom > 0) return;
   panel.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "nearest" });
+}
+
+/** 下钻区和右栏里的「去账本」：period = 选中的这一期，day = 右栏那一天。 */
+function jumpFromTrend(kind) {
+  const item = selectedTrendItem();
+  if (!item) return;
+  if (kind === "day" && state.trendMode !== "day" && state.trendDayKey) {
+    const start = dateFromKey(state.trendDayKey);
+    jumpToTrendPeriod({ start, end: addDays(start, 1) });
+    return;
+  }
+  jumpToTrendPeriod(item);
 }
 
 /** 数值换了才动一下，同一个值反复写不该闪。 */
@@ -2218,17 +2709,20 @@ function renderTrendBudgetPanel() {
   $("trendBudgetRemaining").closest(".budget-rest")?.classList.toggle("is-negative", over);
 }
 
-function renderTrendModal() {
+/**
+ * 打开弹窗、切刻度：窗口和选中一起回到当前期——换口径后同一个序号指的是另一段时间。
+ * 数据刷新（证据抽屉里改了一笔、同步完成）走 preserveSelection：在弹窗里校正完一笔交易，
+ * 人还该停在刚才看的那一期、那一天，而不是被弹回本月。
+ */
+function renderTrendModal({ preserveSelection = false } = {}) {
   const mode = state.trendMode;
-  const series = annotateTrendSeries(trendSeries(mode), mode);
-  state.activeTrendSeries = series;
+  const previous = preserveSelection ? selectedTrendItem() : null;
+  if (!preserveSelection) state.trendWindowEnd = null;
+  rebuildTrendSeries();
 
-  $("trendSubtitle").textContent = trendSubtitle(mode);
-  $("trendChart").innerHTML = trendChartSvg(series, mode);
-  renderTrendBreakdown(series, mode);
-  // 换口径后同一个序号指的是另一段时间，选中态不能沿用；预算区也随之回到当前周期。
+  const index = previous ? trendIndexOf(previous.start) : -1;
   state.trendSelected = null;
-  setTrendSelection(null);
+  setTrendSelection(index >= 0 ? index : null, { keepDay: index >= 0 });
 
   document.querySelectorAll("[data-trend-mode]").forEach((button) => {
     const active = button.dataset.trendMode === mode;
@@ -2255,7 +2749,7 @@ function clearBudgetError() {
 function saveBudgets(budgets) {
   state.budgets = budgets;
   localStorage.setItem(budgetStorageKey, JSON.stringify(budgets));
-  if (!$("trendModal").hidden) renderTrendModal();
+  if (!$("trendModal").hidden) renderTrendModal({ preserveSelection: true });
   renderHeroBudget();
 }
 
@@ -2912,7 +3406,7 @@ async function saveEvidenceEdits(form) {
     // 金额和时间会改变每一个派生视图，重新拉一次快照最省心。
     await Promise.all([loadSnapshot(), reloadCategories()]);
     renderAll();
-    if (!$("trendModal").hidden) renderTrendModal();
+    if (!$("trendModal").hidden) renderTrendModal({ preserveSelection: true });
     window.refreshCfoMotion?.();
     const saved = (payload.saved_fields || []).length;
     if (!saved) showToast("没有需要保存的改动");
@@ -2950,7 +3444,7 @@ async function deleteActiveTransaction() {
     closeEvidence();
     await Promise.all([loadSnapshot(), reloadCategories()]);
     renderAll();
-    if (!$("trendModal").hidden) renderTrendModal();
+    if (!$("trendModal").hidden) renderTrendModal({ preserveSelection: true });
     window.refreshCfoMotion?.();
     showToast("交易及本地证据已删除");
   } catch (error) {
@@ -3009,6 +3503,7 @@ function closeEvidence() {
   const drawer = $("evidenceDrawer");
   if (!drawer || drawer.hidden) return;
   const panel = drawer.querySelector(".evidence-drawer");
+  const uid = state.activeEvidenceUid;
   state.activeEvidenceUid = null;
   state.evidencePayload = null;
   state.evidenceEditing = false;
@@ -3019,8 +3514,14 @@ function closeEvidence() {
     syncModalPageLock();
   }, { fallback: 300 });
   drawer.classList.remove("drawer-visible");
-  if (state.returnFocusElement instanceof HTMLElement) {
-    state.returnFocusElement.focus({ preventScroll: true });
+  // 在抽屉里改过交易后，底下的列表已经重画，原来那个按钮不在文档里了：
+  // 找同一笔交易的新按钮接住焦点，键盘用户不会被扔回页首。
+  const back = state.returnFocusElement;
+  if (back instanceof HTMLElement) {
+    const target = back.isConnected
+      ? back
+      : uid && topmostOpenModal()?.querySelector(`[data-transaction-uid="${CSS.escape(uid)}"]`);
+    target?.focus({ preventScroll: true });
   }
 }
 
@@ -3956,15 +4457,14 @@ function focusLedger({ category = "all", merchant = "" } = {}) {
 }
 
 /**
- * 从趋势明细格下钻：用户点的是「这段时间」，那就让整个大脑都改看这段时间，
- * 而不是只把账本筛一遍、首屏还写着「本月」。序列里的 end 是半开右界，
+ * 从趋势下钻区去账本：用户点的是「这段时间」，那就让整个大脑都改看这段时间，
+ * 而不是只把账本筛一遍、首屏还写着「本月」。range.end 是半开右界，
  * 退一天转成 customRange 的闭区间末日。
  */
-function jumpToTrendPeriod(index) {
-  const item = state.activeTrendSeries[index];
-  if (!item?.start || !item?.end) return;
+function jumpToTrendPeriod(range) {
+  if (!range?.start || !range?.end) return;
   closeModal("trendModal");
-  applyCustomRange({ start: item.start, end: addDays(item.end, -1) }, { scrollToLedger: true });
+  applyCustomRange({ start: range.start, end: addDays(range.end, -1) }, { scrollToLedger: true });
 }
 
 /** 从分析卡片直接追问：先把对话滚进视野，再把问题发出去。 */
@@ -4691,7 +5191,7 @@ async function syncMailData() {
 
     await Promise.all([loadSnapshot(), reloadCategories()]);
     renderAll();
-    if (!$("trendModal").hidden) renderTrendModal();
+    if (!$("trendModal").hidden) renderTrendModal({ preserveSelection: true });
     window.refreshCfoMotion?.();
 
     renderSyncMetrics(payload);
@@ -4730,7 +5230,7 @@ async function refreshPendingClassifications(maxAttempts = 10) {
     await new Promise((resolve) => window.setTimeout(resolve, 1500));
     await Promise.all([loadSnapshot(), reloadCategories()]);
     renderAll();
-    if (!$("trendModal").hidden) renderTrendModal();
+    if (!$("trendModal").hidden) renderTrendModal({ preserveSelection: true });
   }
 }
 
@@ -5643,7 +6143,7 @@ function wireInteractions() {
     $("trendTooltip").hidden = true;
   });
 
-  // 柱子和明细格互为入口：点哪边都选中同一期，点图表空白处取消。
+  // 点柱子选中那一期，下钻区和右栏跟着换；点图表空白处回到默认那一期。
   $("trendChart").addEventListener("click", (event) => {
     const slot = event.target.closest(".trend-slot");
     setTrendSelection(slot ? Number(slot.dataset.trendIndex) : null);
@@ -5658,20 +6158,57 @@ function wireInteractions() {
     setTrendSelection(Number(slot.dataset.trendIndex));
   });
 
-  $("trendBreakdown").addEventListener("click", (event) => {
-    // 箭头优先：它和格子是并列按钮，点箭头不该只是高亮一下
-    const jump = event.target.closest("[data-trend-jump]");
-    if (jump) {
-      jumpToTrendPeriod(Number(jump.dataset.trendJump));
+  // 下钻区和右栏的按钮都是每次重画的，统一在外层容器上委托。
+  const handleTrendDrilldownClick = (event) => {
+    const shift = event.target.closest("[data-trend-shift]");
+    if (shift) {
+      const step = Number(shift.dataset.trendShift);
+      shiftTrendPeriod(step);
+      // 整块重画过，按钮换了新节点；焦点接回同方向的翻页键，到头了就交给另一侧。
+      const pager = $("trendDetail");
+      (pager.querySelector(`[data-trend-shift="${step}"]:not([disabled])`) || pager.querySelector("[data-trend-shift]:not([disabled])"))
+        ?.focus({ preventScroll: true });
       return;
     }
-    const body = event.target.closest(".trend-cell-body");
-    if (!body) return;
-    setTrendSelection(Number(body.dataset.trendIndex));
+    if (event.target.closest("[data-trend-reset]")) {
+      resetTrendToCurrent();
+      $("trendDetail").querySelector("[data-trend-shift]:not([disabled])")?.focus({ preventScroll: true });
+      return;
+    }
+    const jump = event.target.closest("[data-trend-jump]");
+    if (jump) {
+      jumpFromTrend(jump.dataset.trendJump);
+      return;
+    }
+    const day = event.target.closest("[data-trend-day]");
+    if (day) {
+      selectTrendDay(day.dataset.trendDay);
+      revealTrendSidePanel();
+      return;
+    }
+    const transaction = event.target.closest("[data-transaction-uid]");
+    if (transaction) openEvidence(transaction.dataset.transactionUid);
+  };
+  $("trendDetail").addEventListener("click", handleTrendDrilldownClick);
+  $("trendSidePanel").addEventListener("click", handleTrendDrilldownClick);
+
+  // 日历 / 七天卡是一组：Tab 进来一次，方向键在格子之间走，走到哪选到哪。
+  $("trendDetail").addEventListener("keydown", (event) => {
+    const cell = event.target.closest("[data-trend-day]");
+    if (!cell) return;
+    const rowStep = state.trendMode === "month" ? 7 : 0;
+    const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -rowStep, ArrowDown: rowStep }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    const key = dateKey(addDays(dateFromKey(cell.dataset.trendDay), step));
+    const target = $("trendDetail").querySelector(`[data-trend-day="${key}"]:not([disabled])`);
+    if (!target) return;
+    selectTrendDay(key);
+    target.focus();
   });
 
-  // 回到当前那一期的高亮，不是取消选中。
-  $("trendBudgetReset").addEventListener("click", () => setTrendSelection(currentTrendIndex()));
+  // 回到当前：窗口翻到过去时也一起拉回来。
+  $("trendBudgetReset").addEventListener("click", resetTrendToCurrent);
 
   // 键盘用户也能读到每根柱子的数值
   $("trendChart").addEventListener(
@@ -5742,12 +6279,14 @@ function wireInteractions() {
         closeChatExpanded();
         return;
       }
-      const modal = topmostOpenModal();
-      if (!modal) {
-        if (!$("evidenceDrawer").hidden) closeEvidence();
-      } else {
-        closeModal(modal.id);
+      // 证据抽屉永远叠在最上面（趋势弹窗里点交易就会这样开）：先关它，
+      // 不然 Esc 会越过抽屉把底下的弹窗关掉，抽屉反而悬空留着。
+      if (!$("evidenceDrawer").hidden) {
+        closeEvidence();
+        return;
       }
+      const modal = topmostOpenModal();
+      if (modal) closeModal(modal.id);
       return;
     }
 
@@ -6160,7 +6699,7 @@ async function boot() {
   ]).then(() => {
     rollPrompts();
     renderAll();
-    if (!$("trendModal").hidden) renderTrendModal();
+    if (!$("trendModal").hidden) renderTrendModal({ preserveSelection: true });
     fetchProfileReportMetadata().catch(() => {});
   });
   window.cfoDataReady = dataReady;
