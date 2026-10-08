@@ -154,6 +154,12 @@ function TopRail() {
               <circle cx="10.4" cy="11.8" r="1.7" className="is-filled" />
             </svg>
           </button>
+          <button id="openAccountModal" className="rail-action rail-action-icon" type="button" aria-label="账户" title="账户">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <circle cx="8" cy="5.6" r="2.7" />
+              <path d="M2.8 13.6c.8-2.4 2.8-3.7 5.2-3.7s4.4 1.3 5.2 3.7" />
+            </svg>
+          </button>
         </div>
       </div>
     </header>
@@ -861,6 +867,93 @@ function BudgetModal() {
   );
 }
 
+function AccountModal() {
+  return (
+    <div id="accountModal" className="modal-backdrop" hidden>
+      <section className="modal-shell account-modal" role="dialog" aria-modal="true" aria-labelledby="accountTitle">
+        <div className="modal-header">
+          <div>
+            <h2 id="accountTitle">账户</h2>
+            <p id="accountSubtitle">你的账本只属于这个账户，其他人看不到。</p>
+          </div>
+          <button className="modal-close" type="button" data-modal-close="accountModal" aria-label="关闭账户">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6" />
+            </svg>
+          </button>
+        </div>
+
+        <p className="category-demo-notice" id="accountDemoNotice" hidden>
+          演示模式没有账户，以下设置不可修改。
+        </p>
+
+        <div className="account-body">
+          <form id="accountProfileForm" className="account-section" noValidate>
+            <h3 className="account-section-title">基本信息</h3>
+            <div className="field">
+              <span className="field-label">邮箱</span>
+              <p className="account-readonly" id="accountEmailValue" />
+            </div>
+            <div className="field">
+              <label htmlFor="accountDisplayNameInput">称呼</label>
+              <div className="field-control">
+                <input id="accountDisplayNameInput" type="text" maxLength={20} autoComplete="nickname" aria-describedby="accountProfileError" />
+              </div>
+            </div>
+            <p className="form-error" id="accountProfileError" role="alert" hidden />
+            <div className="account-actions">
+              <button className="btn btn-primary" type="submit">
+                保存称呼
+              </button>
+            </div>
+          </form>
+
+          <form id="accountPasswordForm" className="account-section" noValidate>
+            <h3 className="account-section-title">修改密码</h3>
+            <div className="field">
+              <label htmlFor="accountCurrentPassword">当前密码</label>
+              <div className="field-control">
+                <input id="accountCurrentPassword" type="password" autoComplete="current-password" aria-describedby="accountPasswordError" />
+              </div>
+            </div>
+            <div className="field">
+              <label htmlFor="accountNewPassword">新密码</label>
+              <div className="field-control">
+                <input id="accountNewPassword" type="password" autoComplete="new-password" placeholder="至少 8 位" aria-describedby="accountPasswordError" />
+              </div>
+            </div>
+            <p className="form-error" id="accountPasswordError" role="alert" hidden />
+            <div className="account-actions">
+              <button className="btn btn-quiet" type="submit">
+                修改密码
+              </button>
+            </div>
+          </form>
+
+          <section id="accountAdminSection" className="account-section" aria-labelledby="accountInviteTitle" hidden>
+            <h3 className="account-section-title" id="accountInviteTitle">
+              邀请码
+            </h3>
+            <p className="account-hint">新用户注册时需要填写。每个邀请码只能用一次，14 天内有效。</p>
+            <ul id="accountInviteList" className="invite-list" />
+            <div className="account-actions">
+              <button id="createInviteButton" className="btn btn-quiet" type="button">
+                生成邀请码
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <form id="accountLogoutForm" className="account-footer" method="post" action="./api/v1/logout">
+          <button className="btn btn-quiet" type="submit">
+            退出登录
+          </button>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function RangePickerModal() {
   return (
     <div id="rangeModal" className="modal-backdrop" hidden>
@@ -1086,6 +1179,7 @@ export default function App() {
         <TrendModal />
         <SyncModal />
         <BudgetModal />
+        <AccountModal />
         <RangePickerModal />
         <CategoryManagementModal />
         <CustomPromptModal />

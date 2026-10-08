@@ -8466,6 +8466,118 @@ svg.category-symbol {
   border-top: 1px solid var(--line);
 }
 
+/* — 账户 — */
+.account-modal {
+  width: min(560px, 100%);
+}
+
+.account-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.account-section {
+  display: grid;
+  gap: var(--sp-4);
+  padding: var(--sp-6);
+}
+
+.account-section + .account-section {
+  border-top: 1px solid var(--line);
+}
+
+.account-section[hidden] {
+  display: none;
+}
+
+.account-section-title {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.account-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.account-modal .field-control {
+  grid-template-columns: minmax(0, 1fr);
+  padding-left: 0;
+}
+
+.account-modal .field-control input {
+  padding: 0 12px;
+  font-variant-numeric: normal;
+}
+
+.account-modal .field-label {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.account-readonly {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: var(--fs-base);
+  overflow-wrap: anywhere;
+}
+
+.account-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.invite-list {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.invite-list:empty {
+  display: none;
+}
+
+.invite-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--ink-1);
+  font-size: var(--fs-xs);
+}
+
+.invite-code {
+  color: var(--text-strong);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: var(--fs-sm);
+  letter-spacing: 0.08em;
+}
+
+.invite-item.is-spent .invite-code {
+  color: var(--muted-dim);
+  text-decoration: line-through;
+}
+
+.invite-meta {
+  color: var(--muted);
+  text-align: right;
+}
+
+.account-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--sp-4) var(--sp-6);
+  border-top: 1px solid var(--line);
+}
+
 /* ============================== 页脚 / 提示 ============================== */
 
 .site-foot {

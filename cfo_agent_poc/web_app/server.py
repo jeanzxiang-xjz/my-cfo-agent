@@ -43,15 +43,19 @@ load_env_file(ROOT_DIR / ".env")
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from tenancy import DEFAULT_DISPLAY_NAME, Ledger, current_ledger, use_ledger
+from tenancy import Ledger, current_ledger, use_ledger
+from accounts import AccountError, AccountStore, LoginThrottle, default_home
 
 DEMO_MODE = os.environ.get("CFO_DEMO") == "1"
-# 本地单账本：账本根目录就是 cfo_agent_poc 本身，库文件可用 CFO_DB_PATH 另指（演示库）
-DEFAULT_LEDGER = Ledger(
+# 演示模式免登录、只读，固定读 cfo_agent_poc 下的演示库（CFO_DB_PATH 可另指）
+DEMO_LEDGER = Ledger(
     ROOT_DIR,
-    display_name=os.environ.get("CFO_OWNER_NAME", "").strip() or DEFAULT_DISPLAY_NAME,
-    db_file=Path(os.environ["CFO_DB_PATH"]) if os.environ.get("CFO_DB_PATH") else None,
+    display_name="演示用户",
+    db_file=Path(os.environ["CFO_DB_PATH"]) if os.environ.get("CFO_DB_PATH") else ROOT_DIR / "data" / "cfo-demo.sqlite",
 )
+# 平台库和所有用户账本都在 CFO_HOME 下：platform.sqlite + tenants/<user_id>/
+ACCOUNTS = AccountStore(default_home())
+LOGIN_THROTTLE = LoginThrottle()
 # 链路耗时追踪。默认关闭：这些日志会把工具调用参数打到标准输出，
 # 而参数里带着用户的查询内容，不该在别人跑这个项目时默认刷屏。
 DEBUG_TRACE = os.environ.get("CFO_DEBUG") == "1"
@@ -91,8 +95,8 @@ PROFILE_REPORT_TIMEOUT_SECONDS = float(os.environ.get("CFO_PROFILE_REPORT_TIMEOU
 MAX_CONTEXT_TRANSACTIONS = 40
 SYNC_TIMEOUT_SECONDS = float(os.environ.get("CFO_MAIL_SYNC_TIMEOUT_SECONDS", "90"))
 SYNC_MAX_CANDIDATES = int(os.environ.get("CFO_MAIL_SYNC_MAX_CANDIDATES", "20"))
-CFO_ACCESS_TOKEN = os.environ.get("CFO_ACCESS_TOKEN", "").strip()
 AUTH_COOKIE_NAME = "cfo_session"
+SESSION_MAX_AGE_SECONDS = 30 * 24 * 3600
 MAX_REQUEST_BODY_BYTES = int(os.environ.get("CFO_MAX_REQUEST_BODY_BYTES", "12000"))
 MAX_CHAT_MESSAGE_CHARS = int(os.environ.get("CFO_MAX_CHAT_MESSAGE_CHARS", "600"))
 CLASSIFICATION_TIMEOUT_SECONDS = float(os.environ.get("CFO_CLASSIFICATION_TIMEOUT_SECONDS", "12"))
@@ -219,14 +223,14 @@ TOOL_DEFINITIONS = [
         },
     },
 ]
-LOGIN_PAGE = """<!doctype html>
+AUTH_PAGE = """<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0e0d" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>Jeanz CFO · 登录</title>
+    <title>Jeanz CFO · {title}</title>
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230f1413'/%3E%3Cpath d='M21.5 11.2a6.6 6.6 0 1 0 0 9.6' fill='none' stroke='%2358cda4' stroke-width='2.4' stroke-linecap='round'/%3E%3Cpath d='M9 22.6h14' stroke='%233a4844' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E"
@@ -340,6 +344,11 @@ LOGIN_PAGE = """<!doctype html>
         color: var(--rose-8);
         font-size: 13px;
       }
+      .field + .field { margin-top: 14px; }
+      .hint { margin: 6px 0 0; color: var(--muted-dim); font-size: 11.5px; }
+      .switch { margin: 18px 0 0; color: var(--muted); font-size: 13px; text-align: center; }
+      .switch a { color: var(--jade-8); text-decoration: none; }
+      .switch a:hover { text-decoration: underline; }
       .foot {
         margin: 22px 0 0;
         padding-top: 18px;
@@ -360,18 +369,72 @@ LOGIN_PAGE = """<!doctype html>
         <path d="M21.5 11.2a6.6 6.6 0 1 0 0 9.6" fill="none" stroke="#58cda4" stroke-width="2" stroke-linecap="round" />
         <path d="M9 22.6h14" stroke="#3a4844" stroke-width="1.6" stroke-linecap="round" />
       </svg>
-      <h1>Jeanz CFO</h1>
-      <p class="lede">这是 {owner} 的私人财务账本，输入访问口令后继续。</p>
-      <form method="post" action="/api/login">
-        <label for="token">访问口令</label>
-        <input id="token" name="token" type="password" autocomplete="current-password" autofocus />
-        <button type="submit">进入账本</button>
+      <h1>{heading}</h1>
+      <p class="lede">{lede}</p>
+      <form method="post" action="{action}">
+        {fields}
+        <button type="submit">{submit}</button>
       </form>
       <div class="error" role="alert">{error}</div>
-      <p class="foot">账本与账单截图都存放在这台机器上，不会上传到第三方服务。</p>
+      <p class="switch">{switch}</p>
+      <p class="foot">每个账户的账本单独存放，彼此不可见。</p>
     </main>
   </body>
 </html>"""
+
+
+def _auth_field(name: str, label: str, input_type: str, autocomplete: str, value: str = "", *, hint: str = "", autofocus: bool = False) -> str:
+    value_attr = f' value="{html.escape(value)}"' if value and input_type != "password" else ""
+    focus_attr = " autofocus" if autofocus else ""
+    hint_html = f'<p class="hint">{html.escape(hint)}</p>' if hint else ""
+    return (
+        f'<div class="field"><label for="{name}">{html.escape(label)}</label>'
+        f'<input id="{name}" name="{name}" type="{input_type}" autocomplete="{autocomplete}"{value_attr}{focus_attr} />'
+        f"{hint_html}</div>"
+    )
+
+
+def render_auth_page(mode: str, error: str = "", values: dict | None = None, *, needs_invite: bool = True) -> bytes:
+    """登录 / 注册页。values 用来在出错时把用户填过的邮箱、称呼带回去（密码不回填）。"""
+    values = values or {}
+    if mode == "register":
+        fields = [
+            _auth_field("email", "邮箱", "email", "email", values.get("email", ""), autofocus=True),
+            _auth_field("display_name", "称呼", "text", "nickname", values.get("display_name", ""), hint="CFO 会这样称呼你，之后可以改"),
+            _auth_field("password", "密码", "password", "new-password", hint="至少 8 位"),
+        ]
+        if needs_invite:
+            fields.append(_auth_field("invite", "邀请码", "text", "off", values.get("invite", "")))
+        page = {
+            "title": "注册",
+            "heading": "创建你的账本",
+            "lede": "注册后会得到一个只属于你的账本。" if needs_invite else "你是第一位用户，注册后自动成为管理员。",
+            "action": "/api/v1/register",
+            "submit": "注册并进入",
+            "switch": '已经有账户？<a href="/login">去登录</a>',
+        }
+    else:
+        fields = [
+            _auth_field("email", "邮箱", "email", "username", values.get("email", ""), autofocus=True),
+            _auth_field("password", "密码", "password", "current-password"),
+        ]
+        page = {
+            "title": "登录",
+            "heading": "Jeanz CFO",
+            "lede": "登录后查看你的私人财务账本。",
+            "action": "/api/v1/login",
+            "submit": "进入账本",
+            "switch": '还没有账户？<a href="/register">注册</a>',
+        }
+    body = AUTH_PAGE
+    for key, value in page.items():
+        body = body.replace("{" + key + "}", value if key == "switch" else html.escape(value))
+    return body.replace("{fields}", "\n        ".join(fields)).replace("{error}", html.escape(error)).encode("utf-8")
+
+
+def parse_form(raw_body: str) -> dict[str, str]:
+    parsed = parse_qs(raw_body, keep_blank_values=True)
+    return {key: values[0] for key, values in parsed.items() if values}
 
 
 def parse_paid_at(value: str | None) -> datetime | None:
@@ -459,10 +522,6 @@ def sanitized_budgets(value: object) -> dict:
     return result
 
 
-def access_token_configured() -> bool:
-    return bool(CFO_ACCESS_TOKEN)
-
-
 def parse_cookies(header: str | None) -> dict[str, str]:
     if not header:
         return {}
@@ -472,12 +531,6 @@ def parse_cookies(header: str | None) -> dict[str, str]:
     except http.cookies.CookieError:
         return {}
     return {key: morsel.value for key, morsel in cookies.items()}
-
-
-def token_matches(value: str | None) -> bool:
-    if not access_token_configured() or not value:
-        return False
-    return secrets.compare_digest(value, CFO_ACCESS_TOKEN)
 
 
 def safe_error_message(prefix: str, exc: Exception) -> str:
@@ -2153,13 +2206,26 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(FRONTEND_DIR), **kwargs)
 
-    def request_ledger(self) -> Ledger:
-        return DEFAULT_LEDGER
+    user: dict | None = None
+
+    def session_token(self) -> str | None:
+        return parse_cookies(self.headers.get("Cookie")).get(AUTH_COOKIE_NAME)
+
+    def request_ledger(self) -> Ledger | None:
+        if DEMO_MODE:
+            return DEMO_LEDGER
+        self.user = ACCOUNTS.session_user(self.session_token())
+        return ACCOUNTS.ledger_for(self.user) if self.user else None
 
     def dispatch_with_ledger(self, route) -> None:
         # 请求头解析完才知道是谁，所以在这里而不是更早绑定账本；
         # 业务函数一律通过 current_ledger() 读取，请求结束即解绑。
+        # 未登录时不绑定任何账本：漏了鉴权的路由会直接报错，而不是读到某个默认库。
+        self.user = None
         ledger = self.request_ledger()
+        if ledger is None:
+            route()
+            return
         ensure_ledger_schema(ledger)
         with use_ledger(ledger):
             route()
@@ -2188,42 +2254,164 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def is_authenticated(self) -> bool:
-        if DEMO_MODE:
-            return True
-        auth_header = self.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer ") and token_matches(auth_header.removeprefix("Bearer ").strip()):
-            return True
-        if token_matches(self.headers.get("X-CFO-Access-Token")):
-            return True
-        cookies = parse_cookies(self.headers.get("Cookie"))
-        return token_matches(cookies.get(AUTH_COOKIE_NAME))
+        return DEMO_MODE or self.user is not None
 
-    def send_login_page(self, error: str = "", status: HTTPStatus = HTTPStatus.OK) -> None:
-        body = (
-            LOGIN_PAGE
-            .replace("{owner}", html.escape(current_ledger().display_name))
-            .replace("{error}", html.escape(error))
-        ).encode("utf-8")
+    def client_ip(self) -> str:
+        # 网关后面时取 X-Forwarded-For 的第一个地址，只用于登录限流
+        forwarded = self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        return forwarded or self.client_address[0]
+
+    def is_cross_site_write(self) -> bool:
+        """写请求带了 Origin 且和 Host 不一致，就当跨站伪造拒掉（配合 SameSite=Lax 兜底）。"""
+        origin = self.headers.get("Origin")
+        if not origin or origin == "null":
+            return bool(origin)
+        return urlparse(origin).netloc != self.headers.get("Host", "")
+
+    def send_auth_page(
+        self, mode: str = "login", error: str = "", status: HTTPStatus = HTTPStatus.OK, values: dict | None = None
+    ) -> None:
+        body = render_auth_page(mode, error, values, needs_invite=ACCOUNTS.needs_invite())
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
-    def redirect_to_root(self) -> None:
+    def redirect(self, location: str, *, cookie: str | None = None) -> None:
         self.send_response(HTTPStatus.SEE_OTHER)
-        self.send_header("Location", "/")
+        self.send_header("Location", location)
+        if cookie is not None:
+            self.send_header("Set-Cookie", cookie)
         self.end_headers()
 
-    def set_auth_cookie(self) -> None:
+    def session_cookie(self, token: str) -> str:
         secure_flag = "Secure; " if self.headers.get("X-Forwarded-Proto", "").lower() == "https" else ""
-        self.send_header(
-            "Set-Cookie",
-            f"{AUTH_COOKIE_NAME}={CFO_ACCESS_TOKEN}; HttpOnly; {secure_flag}SameSite=Lax; Path=/; Max-Age=2592000",
-        )
+        return f"{AUTH_COOKIE_NAME}={token}; HttpOnly; {secure_flag}SameSite=Lax; Path=/; Max-Age={SESSION_MAX_AGE_SECONDS}"
 
-    def clear_auth_cookie(self) -> None:
-        self.send_header("Set-Cookie", f"{AUTH_COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0")
+    @staticmethod
+    def cleared_session_cookie() -> str:
+        return f"{AUTH_COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"
+
+    def read_form_body(self) -> dict[str, str]:
+        length = min(int(self.headers.get("Content-Length", "0") or 0), MAX_REQUEST_BODY_BYTES)
+        return parse_form(self.rfile.read(length).decode("utf-8", errors="replace"))
+
+    def handle_login(self) -> None:
+        form = self.read_form_body()
+        email = form.get("email", "").strip().lower()
+        throttle_keys = (f"ip:{self.client_ip()}", f"email:{email}")
+        if LOGIN_THROTTLE.blocked(*throttle_keys):
+            self.send_auth_page("login", "尝试次数太多，请 15 分钟后再试。", HTTPStatus.TOO_MANY_REQUESTS, form)
+            return
+        try:
+            user = ACCOUNTS.authenticate(email, form.get("password", ""))
+        except AccountError as exc:
+            LOGIN_THROTTLE.fail(*throttle_keys)
+            self.send_auth_page("login", str(exc), HTTPStatus(exc.status), form)
+            return
+        LOGIN_THROTTLE.clear(f"email:{email}")
+        token = ACCOUNTS.create_session(user["id"], self.headers.get("User-Agent"))
+        self.redirect("/", cookie=self.session_cookie(token))
+
+    def handle_register(self) -> None:
+        form = self.read_form_body()
+        throttle_key = f"register:{self.client_ip()}"
+        if LOGIN_THROTTLE.blocked(throttle_key):
+            self.send_auth_page("register", "尝试次数太多，请稍后再试。", HTTPStatus.TOO_MANY_REQUESTS, form)
+            return
+        try:
+            user = ACCOUNTS.register(
+                form.get("email"), form.get("password"), form.get("display_name"), form.get("invite")
+            )
+        except AccountError as exc:
+            if exc.code == "invalid_invite":
+                LOGIN_THROTTLE.fail(throttle_key)
+            self.send_auth_page("register", str(exc), HTTPStatus(exc.status), form)
+            return
+        ensure_ledger_schema(ACCOUNTS.ledger_for(user))
+        token = ACCOUNTS.create_session(user["id"], self.headers.get("User-Agent"))
+        self.redirect("/", cookie=self.session_cookie(token))
+
+    def account_error(self, error: AccountError) -> None:
+        self.send_json({"ok": False, "code": error.code, "answer": str(error)}, status=HTTPStatus(error.status))
+
+    def me_payload(self) -> dict:
+        if DEMO_MODE:
+            return {"ok": True, "demo": True, "user": {"display_name": DEMO_LEDGER.display_name, "is_admin": False}}
+        user = self.user or {}
+        return {
+            "ok": True,
+            "demo": False,
+            "user": {
+                "email": user.get("email"),
+                "display_name": user.get("display_name"),
+                "is_admin": bool(user.get("is_admin")),
+                "created_at": user.get("created_at"),
+            },
+        }
+
+    def route_account_api(self, method: str, path: str) -> bool:
+        """/api/v1/me、/api/v1/settings/*、/api/v1/invites。返回 True 表示已处理。"""
+        if path == "/api/v1/me" and method == "GET":
+            self.send_json(self.me_payload())
+            return True
+        if path == "/api/v1/settings/budgets" and method == "GET":
+            budgets = None if DEMO_MODE else ACCOUNTS.get_budgets(self.user["id"])
+            self.send_json({"ok": True, "budgets": budgets})
+            return True
+        if path == "/api/v1/invites" and method == "GET":
+            if DEMO_MODE or not self.user.get("is_admin"):
+                self.send_json({"ok": False, "code": "forbidden", "answer": "只有管理员能管理邀请码。"}, status=HTTPStatus.FORBIDDEN)
+            else:
+                self.send_json({"ok": True, "invites": ACCOUNTS.list_invites()})
+            return True
+        if method == "GET" or not path.startswith("/api/v1/"):
+            return False
+        if DEMO_MODE:
+            self.send_json({"ok": False, "code": "demo_readonly", "answer": "演示模式不能修改账户设置。"}, status=HTTPStatus.FORBIDDEN)
+            return True
+        try:
+            if path == "/api/v1/me" and method == "PATCH":
+                user = ACCOUNTS.update_display_name(self.user["id"], self.read_json_body().get("display_name"))
+                self.user = user
+                self.send_json(self.me_payload())
+            elif path == "/api/v1/me/password" and method == "POST":
+                payload = self.read_json_body()
+                ACCOUNTS.change_password(
+                    self.user["id"],
+                    payload.get("current_password"),
+                    payload.get("new_password"),
+                    keep_session=self.session_token(),
+                )
+                self.send_json({"ok": True})
+            elif path == "/api/v1/settings/budgets" and method == "PUT":
+                budgets = ACCOUNTS.set_budgets(self.user["id"], self.read_json_body().get("budgets"))
+                self.send_json({"ok": True, "budgets": budgets})
+            elif path == "/api/v1/invites" and method == "POST":
+                if not self.user.get("is_admin"):
+                    self.send_json({"ok": False, "code": "forbidden", "answer": "只有管理员能生成邀请码。"}, status=HTTPStatus.FORBIDDEN)
+                else:
+                    self.send_json({"ok": True, "invite": ACCOUNTS.create_invite(self.user["id"])}, status=HTTPStatus.CREATED)
+            else:
+                return False
+        except AccountError as exc:
+            self.account_error(exc)
+        except CategoryError as exc:
+            self.category_error(exc)
+        except json.JSONDecodeError:
+            self.send_json({"ok": False, "answer": "请求格式不是合法 JSON。"}, status=HTTPStatus.BAD_REQUEST)
+        return True
+
+    def guard_write(self, method: str, path: str) -> bool:
+        """写请求的公共入口检查：跨站拦截、登录校验、账户类接口分流。返回 True 表示已处理完。"""
+        if self.is_cross_site_write():
+            self.send_json({"ok": False, "code": "cross_site", "answer": "请求来源不受信任。"}, status=HTTPStatus.FORBIDDEN)
+            return True
+        if not self.is_authenticated():
+            self.send_unauthorized_json()
+            return True
+        return self.route_account_api(method, path)
 
     def send_unauthorized_json(self) -> None:
         self.send_json({"ok": False, "code": "unauthorized", "answer": "请先登录后再访问。"}, status=HTTPStatus.UNAUTHORIZED)
@@ -2258,7 +2446,7 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
                 status=HTTPStatus.FORBIDDEN,
             )
             return False
-        if not access_token_configured() or not self.is_authenticated():
+        if not self.is_authenticated():
             self.send_unauthorized_json()
             return False
         return True
@@ -2270,19 +2458,22 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True})
             return
 
-        if path == "/login":
-            self.send_login_page()
-            return
-
-        if not access_token_configured() and not DEMO_MODE:
-            self.send_login_page("服务端还没有配置 CFO_ACCESS_TOKEN，暂时不能公网访问。", status=HTTPStatus.SERVICE_UNAVAILABLE)
+        if path in {"/login", "/register"}:
+            if self.is_authenticated():
+                self.redirect("/")
+            else:
+                self.send_auth_page(path.lstrip("/"))
             return
 
         if not self.is_authenticated():
             if path == "/" or path.endswith(".html"):
-                self.send_login_page()
+                # 一个账户都没有时直接去注册页，第一个注册的人就是管理员
+                self.redirect("/login" if ACCOUNTS.needs_invite() else "/register")
             else:
                 self.send_unauthorized_json()
+            return
+
+        if path.startswith("/api/v1/") and self.route_account_api("GET", path):
             return
 
         if path == "/data.json":
@@ -2348,38 +2539,24 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
 
     def route_POST(self) -> None:
         path = urlparse(self.path).path
-        if path == "/api/login":
-            if not access_token_configured():
-                self.send_login_page("服务端还没有配置 CFO_ACCESS_TOKEN，暂时不能公网访问。", status=HTTPStatus.SERVICE_UNAVAILABLE)
-                return
-            length = min(int(self.headers.get("Content-Length", "0")), MAX_REQUEST_BODY_BYTES)
-            raw_body = self.rfile.read(length).decode("utf-8", errors="replace")
-            submitted = ""
-            for piece in raw_body.split("&"):
-                key, _, value = piece.partition("=")
-                if key == "token":
-                    from urllib.parse import unquote_plus
-
-                    submitted = unquote_plus(value)
-                    break
-            if token_matches(submitted):
-                self.send_response(HTTPStatus.SEE_OTHER)
-                self.send_header("Location", "/")
-                self.set_auth_cookie()
-                self.end_headers()
-                return
-            self.send_login_page("访问口令不正确。", status=HTTPStatus.UNAUTHORIZED)
+        if path == "/api/v1/login" or path == "/api/v1/register":
+            if DEMO_MODE:
+                self.redirect("/")
+            elif self.is_cross_site_write():
+                self.send_auth_page("login", "请求来源不受信任。", HTTPStatus.FORBIDDEN)
+            elif path == "/api/v1/login":
+                self.handle_login()
+            else:
+                self.handle_register()
             return
 
-        if path == "/api/logout":
-            self.send_response(HTTPStatus.SEE_OTHER)
-            self.send_header("Location", "/login")
-            self.clear_auth_cookie()
-            self.end_headers()
+        if path == "/api/v1/logout":
+            if not self.is_cross_site_write():
+                ACCOUNTS.revoke_session(self.session_token())
+            self.redirect("/login", cookie=self.cleared_session_cookie())
             return
 
-        if not DEMO_MODE and (not access_token_configured() or not self.is_authenticated()):
-            self.send_unauthorized_json()
+        if self.guard_write("POST", path):
             return
 
         if path == "/api/categories":
@@ -2412,19 +2589,14 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/sync-mail":
-            try:
-                self.send_json(sync_mail_once())
-            except Exception as exc:
-                # 前端只拿到异常类型名（不泄露内部细节），详情留在服务端日志里，
-                # 否则「请检查本机服务日志」这句提示无日志可查。
-                print(f"[CFO] 邮箱同步失败：{type(exc).__name__}: {exc}")
-                self.send_json({
-                    "ok": False,
-                    "code": "mail_sync_failed",
-                    "answer": safe_error_message("邮箱同步失败", exc),
-                }, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            # 邮箱配置是全进程共用的一个，多用户下谁点同步，别人的截图就会进谁的账本。
+            # 下一阶段改为快捷指令直传，邮件链路整体下线；这里先关掉。
+            self.send_json({
+                "ok": False,
+                "code": "mail_sync_retired",
+                "answer": "邮箱同步已停用，请改用快捷指令直接上传截图。",
+            }, status=HTTPStatus.GONE)
             return
-
 
         if path == "/api/transaction-edit":
             try:
@@ -2516,6 +2688,8 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
 
     def route_PATCH(self) -> None:
         path = urlparse(self.path).path
+        if self.guard_write("PATCH", path):
+            return
         prompt_prefix = "/api/custom-prompts/"
         if path.startswith(prompt_prefix) and path[len(prompt_prefix):]:
             if not self.allow_category_write("我的常问"):
@@ -2549,6 +2723,8 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
 
     def route_PUT(self) -> None:
         path = urlparse(self.path).path
+        if self.guard_write("PUT", path):
+            return
         if path == "/api/custom-prompts/order":
             if not self.allow_category_write("我的常问"):
                 return
@@ -2581,6 +2757,8 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
 
     def route_DELETE(self) -> None:
         path = urlparse(self.path).path
+        if self.guard_write("DELETE", path):
+            return
         prompt_prefix = "/api/custom-prompts/"
         if path.startswith(prompt_prefix) and path[len(prompt_prefix):]:
             if not self.allow_category_write("我的常问"):
@@ -2613,20 +2791,25 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8091)
     args = parser.parse_args()
 
-    ensure_ledger_schema(DEFAULT_LEDGER)
-    # 上次进程可能是在分类跑到一半时挂的，那些行会一直停在 pending。
-    # 启动时先收一次尾，保证界面上不会留着「识别中」。
-    if not DEMO_MODE:
-        try:
-            settled = settle_stuck_transactions(DEFAULT_LEDGER.db_path)
-            if settled:
-                print(f"[CFO] 结案 {settled} 笔滞留的待分类交易")
-        except Exception as exc:  # 清扫失败不该挡住启动
-            print(f"[CFO] 待分类交易清扫跳过：{type(exc).__name__}")
-    with use_ledger(DEFAULT_LEDGER):
-        trigger_background_classification()
+    if DEMO_MODE:
+        ensure_ledger_schema(DEMO_LEDGER)
+    else:
+        # 上次进程可能是在分类跑到一半时挂的，那些行会一直停在 pending。
+        # 启动时把每个账本都收一次尾，保证界面上不会留着「识别中」。
+        for user in ACCOUNTS.list_users():
+            ledger = ACCOUNTS.ledger_for(user)
+            try:
+                ensure_ledger_schema(ledger)
+                settled = settle_stuck_transactions(ledger.db_path)
+                if settled:
+                    print(f"[CFO] {user['id']}：结案 {settled} 笔滞留的待分类交易")
+                with use_ledger(ledger):
+                    trigger_background_classification()
+            except Exception as exc:  # 单个账本出问题不该挡住启动
+                print(f"[CFO] {user['id']}：启动清扫跳过：{type(exc).__name__}")
     server = ThreadingHTTPServer((args.host, args.port), CFORequestHandler)
-    print(f"Serving CFO web app at http://{args.host}:{args.port}/")
+    mode = "demo" if DEMO_MODE else f"{len(ACCOUNTS.list_users())} 个账户，数据目录 {ACCOUNTS.home}"
+    print(f"Serving CFO web app at http://{args.host}:{args.port}/ （{mode}）")
     server.serve_forever()
 
 

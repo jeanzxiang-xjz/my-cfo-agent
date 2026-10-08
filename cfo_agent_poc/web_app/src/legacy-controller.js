@@ -113,17 +113,26 @@ const ICONS = {
   alert: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.8v4.6M12 15.8v.4"/></svg>`,
 };
 
-function loadBudgetConfig() {
+function normalizeBudgets(saved = {}) {
+  return {
+    day: Number(saved.day) > 0 ? Number(saved.day) : defaultBudgets.day,
+    week: Number(saved.week) > 0 ? Number(saved.week) : defaultBudgets.week,
+    month: Number(saved.month) > 0 ? Number(saved.month) : defaultBudgets.month,
+  };
+}
+
+function readLocalBudgets() {
   try {
-    const saved = JSON.parse(localStorage.getItem(budgetStorageKey) || "{}");
-    return {
-      day: Number(saved.day) > 0 ? Number(saved.day) : defaultBudgets.day,
-      week: Number(saved.week) > 0 ? Number(saved.week) : defaultBudgets.week,
-      month: Number(saved.month) > 0 ? Number(saved.month) : defaultBudgets.month,
-    };
+    const raw = localStorage.getItem(budgetStorageKey);
+    return raw ? JSON.parse(raw) : null;
   } catch {
-    return { ...defaultBudgets };
+    return null;
   }
+}
+
+/** 账户的预算存在服务端；本地缓存只在演示模式和服务端读回来之前兜底。 */
+function loadBudgetConfig() {
+  return normalizeBudgets(readLocalBudgets() || {});
 }
 
 let state = {
@@ -2748,9 +2757,167 @@ function clearBudgetError() {
 
 function saveBudgets(budgets) {
   state.budgets = budgets;
-  localStorage.setItem(budgetStorageKey, JSON.stringify(budgets));
   if (!$("trendModal").hidden) renderTrendModal({ preserveSelection: true });
   renderHeroBudget();
+  if (state.demo) {
+    try {
+      localStorage.setItem(budgetStorageKey, JSON.stringify(budgets));
+    } catch {
+      /* 隐私模式下写不进去也不影响本次使用 */
+    }
+    return Promise.resolve();
+  }
+  return putServerBudgets(budgets).catch((error) => {
+    showToast(`预算没能保存到账户：${error.message}`, "error");
+  });
+}
+
+function putServerBudgets(budgets) {
+  return categoryRequest("./api/v1/settings/budgets", { method: "PUT", body: JSON.stringify({ budgets }) });
+}
+
+async function loadServerBudgets() {
+  if (state.demo) return;
+  const payload = await categoryRequest("./api/v1/settings/budgets", { cache: "no-store" });
+  if (payload.budgets) {
+    state.budgets = normalizeBudgets(payload.budgets);
+    return;
+  }
+  // 账户里还没有预算：把这台浏览器以前存的搬上去一次，之后以账户为准
+  const local = readLocalBudgets();
+  if (!local) return;
+  state.budgets = normalizeBudgets(local);
+  await putServerBudgets(state.budgets);
+  try {
+    localStorage.removeItem(budgetStorageKey);
+  } catch {
+    /* 清不掉也无妨，账户里已经有了 */
+  }
+}
+
+/* ---------------------------- 账户 ---------------------------- */
+
+async function loadAccount() {
+  const response = await fetch("./api/v1/me", { cache: "no-store" });
+  if (!response.ok) return;
+  const payload = await response.json();
+  state.account = payload.user || null;
+  if (payload.demo) state.demo = true;
+}
+
+function setFormError(id, message) {
+  const node = $(id);
+  node.textContent = message || "";
+  node.hidden = !message;
+}
+
+function renderAccountModal() {
+  const account = state.account || {};
+  const demo = Boolean(state.demo);
+  $("accountDemoNotice").hidden = !demo;
+  $("accountEmailValue").textContent = account.email || (demo ? "演示模式" : "");
+  $("accountDisplayNameInput").value = account.display_name || "";
+  $("accountCurrentPassword").value = "";
+  $("accountNewPassword").value = "";
+  setFormError("accountProfileError", "");
+  setFormError("accountPasswordError", "");
+  document
+    .querySelectorAll("#accountProfileForm input, #accountProfileForm button, #accountPasswordForm input, #accountPasswordForm button")
+    .forEach((node) => {
+      node.disabled = demo;
+    });
+  $("accountLogoutForm").hidden = demo;
+  $("accountAdminSection").hidden = !account.is_admin;
+  if (account.is_admin) loadInvites();
+}
+
+function formatInviteTime(value) {
+  const date = parseDate(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+function renderInvites(invites) {
+  $("accountInviteList").innerHTML = invites
+    .slice(0, 6)
+    .map((invite) => {
+      const spent = invite.used || invite.expired;
+      let meta = `${formatInviteTime(invite.expires_at)} 前有效`;
+      if (invite.used) meta = `已被 ${invite.used_by_email || "用户"} 使用`;
+      else if (invite.expired) meta = "已过期";
+      return `<li class="invite-item${spent ? " is-spent" : ""}">
+        <span class="invite-code">${escapeHtml(invite.code)}</span>
+        <span class="invite-meta">${escapeHtml(meta)}</span>
+      </li>`;
+    })
+    .join("");
+}
+
+async function loadInvites() {
+  try {
+    const payload = await categoryRequest("./api/v1/invites", { cache: "no-store" });
+    renderInvites(payload.invites || []);
+  } catch (error) {
+    showToast(`邀请码读取失败：${error.message}`, "error");
+  }
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function wireAccount() {
+  $("openAccountModal").addEventListener("click", () => openModal("accountModal"));
+
+  $("accountProfileForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setFormError("accountProfileError", "");
+    try {
+      const payload = await categoryRequest("./api/v1/me", {
+        method: "PATCH",
+        body: JSON.stringify({ display_name: $("accountDisplayNameInput").value }),
+      });
+      state.account = payload.user;
+      showToast("称呼已更新");
+    } catch (error) {
+      setFormError("accountProfileError", error.message);
+    }
+  });
+
+  $("accountPasswordForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setFormError("accountPasswordError", "");
+    try {
+      await categoryRequest("./api/v1/me/password", {
+        method: "POST",
+        body: JSON.stringify({
+          current_password: $("accountCurrentPassword").value,
+          new_password: $("accountNewPassword").value,
+        }),
+      });
+      $("accountCurrentPassword").value = "";
+      $("accountNewPassword").value = "";
+      showToast("密码已修改，其他设备需要重新登录");
+    } catch (error) {
+      setFormError("accountPasswordError", error.message);
+    }
+  });
+
+  $("createInviteButton").addEventListener("click", async () => {
+    try {
+      const payload = await categoryRequest("./api/v1/invites", { method: "POST" });
+      const code = payload.invite.code;
+      await loadInvites();
+      showToast((await copyText(code)) ? `邀请码 ${code} 已复制` : `邀请码 ${code}`);
+    } catch (error) {
+      showToast(`生成邀请码失败：${error.message}`, "error");
+    }
+  });
 }
 
 /* ---------------------------- 分类目录维护 ---------------------------- */
@@ -3163,6 +3330,7 @@ function openModal(id) {
   syncModalPageLock();
   if (id === "trendModal") renderTrendModal();
   if (id === "budgetModal") renderBudgetForm();
+  if (id === "accountModal") renderAccountModal();
   if (id === "syncModal") resetSyncModal();
   if (id === "profileReportModal") loadProfileReportForModal();
   if (id === "promptModal") {
@@ -5783,6 +5951,7 @@ function wireInteractions() {
     openTrendForPeriod();
   });
   $("openBudgetSettings").addEventListener("click", () => openModal("budgetModal"));
+  wireAccount();
 
   $("openSyncModal").addEventListener("click", () => {
     openModal("syncModal");
@@ -6654,6 +6823,11 @@ function wireInteractions() {
 
 async function loadSnapshot() {
   const response = await fetch("./data.json", { cache: "no-store" });
+  if (response.status === 401) {
+    // 会话过期或在别处退出了：回登录页，不再把 401 当成「账本加载失败」
+    window.location.replace("./login");
+    await new Promise(() => {});
+  }
   if (!response.ok) throw new Error(`data.json 加载失败：HTTP ${response.status}`);
   const data = await response.json();
   state.generatedAt = data.generated_at || null;
@@ -6696,6 +6870,10 @@ async function boot() {
     loadSnapshot(),
     reloadCategories({ preserveSelection: false }),
     loadCustomPrompts(),
+    // 账户和预算读不到不该挡住看账，失败就沿用本地默认值
+    loadAccount()
+      .then(() => loadServerBudgets())
+      .catch(() => {}),
   ]).then(() => {
     rollPrompts();
     renderAll();

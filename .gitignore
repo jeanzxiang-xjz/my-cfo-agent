@@ -40,3 +40,6 @@ skills-lock.json
 
 # Local promo/marketing work (not part of the open-source project)
 local-tests/
+
+# Per-user ledgers of the multi-user app (each one mirrors data/ above)
+cfo_agent_poc/data/tenants/
