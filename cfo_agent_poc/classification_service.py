@@ -35,7 +35,10 @@ GENERIC_THINGS = (
 OCR_EXCERPT_LIMIT = 600
 HISTORY_EXAMPLE_LIMIT = 5
 MODEL_CATEGORIES = tuple(category for category in FIXED_TAXONOMY if category != "uncategorized")
-_WORKER_LOCK = threading.Lock()
+_WORKER_LOCKS: dict[str, threading.Lock] = {}
+_WORKER_LOCKS_GUARD = threading.Lock()
+# 全进程同时打 DeepSeek 的分类 worker 上限，用户多了也不会一齐涌过去
+_MODEL_SLOTS = threading.BoundedSemaphore(int(os.environ.get("CFO_CLASSIFICATION_CONCURRENCY", "2")))
 
 # 分类状态机的三个阈值。
 #
@@ -469,17 +472,26 @@ def enrich_pending_transactions(
     }
 
 
+def _ledger_lock(db_path: str | Path) -> threading.Lock:
+    key = str(Path(db_path).resolve())
+    with _WORKER_LOCKS_GUARD:
+        return _WORKER_LOCKS.setdefault(key, threading.Lock())
+
+
 def start_background_enrichment(db_path: str | Path, **kwargs) -> bool:
     if not (kwargs.get("api_key") or os.environ.get("DEEPSEEK_API_KEY")):
         return False
-    if not _WORKER_LOCK.acquire(blocking=False):
+    # 同一账本只跑一个 worker；不同账本各跑各的，否则 A 在跑时 B 的请求会被静默丢掉。
+    lock = _ledger_lock(db_path)
+    if not lock.acquire(blocking=False):
         return False
 
     def run() -> None:
         try:
-            enrich_pending_transactions(db_path, **kwargs)
+            with _MODEL_SLOTS:
+                enrich_pending_transactions(db_path, **kwargs)
         finally:
-            _WORKER_LOCK.release()
+            lock.release()
 
     threading.Thread(target=run, name="cfo-classification", daemon=True).start()
     return True

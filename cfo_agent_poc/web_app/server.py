@@ -11,6 +11,7 @@ import secrets
 import sqlite3
 import statistics
 import sys
+import threading
 import urllib.error
 import urllib.request
 from datetime import date, datetime, timedelta
@@ -42,9 +43,15 @@ load_env_file(ROOT_DIR / ".env")
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-DB_PATH = Path(os.environ.get("CFO_DB_PATH") or ROOT_DIR / "data" / "cfo.sqlite")
+from tenancy import DEFAULT_DISPLAY_NAME, Ledger, current_ledger, use_ledger
+
 DEMO_MODE = os.environ.get("CFO_DEMO") == "1"
-OWNER_NAME = os.environ.get("CFO_OWNER_NAME", "").strip() or "用户"
+# 本地单账本：账本根目录就是 cfo_agent_poc 本身，库文件可用 CFO_DB_PATH 另指（演示库）
+DEFAULT_LEDGER = Ledger(
+    ROOT_DIR,
+    display_name=os.environ.get("CFO_OWNER_NAME", "").strip() or DEFAULT_DISPLAY_NAME,
+    db_file=Path(os.environ["CFO_DB_PATH"]) if os.environ.get("CFO_DB_PATH") else None,
+)
 # 链路耗时追踪。默认关闭：这些日志会把工具调用参数打到标准输出，
 # 而参数里带着用户的查询内容，不该在别人跑这个项目时默认刷屏。
 DEBUG_TRACE = os.environ.get("CFO_DEBUG") == "1"
@@ -376,9 +383,12 @@ def parse_paid_at(value: str | None) -> datetime | None:
         return None
 
 
+def ledger_db() -> Path:
+    return current_ledger().db_path
+
+
 def build_payload() -> dict:
-    """Use the server's active database, including tests that patch DB_PATH."""
-    return build_snapshot_payload(DB_PATH)
+    return build_snapshot_payload(ledger_db())
 
 
 def is_analysis_eligible(tx: dict) -> bool:
@@ -418,7 +428,7 @@ def amount_value(tx: dict) -> float:
 
 
 def category_summary(transactions: list[dict]) -> list[dict]:
-    labels = category_labels(DB_PATH)
+    labels = category_labels(ledger_db())
     grouped: dict[str, dict] = {}
     for tx in transactions:
         category = tx.get("category") or "uncategorized"
@@ -487,7 +497,7 @@ def is_public_static_path(path: str) -> bool:
 def chat_context(period: str, budgets: dict | None = None) -> dict:
     payload = build_payload()
     transactions = payload.get("transactions", [])
-    labels = category_labels(DB_PATH)
+    labels = category_labels(ledger_db())
     selected = scoped_transactions(transactions, period)
     largest = max(selected, key=lambda tx: amount_value(tx), default=None)
     selected_total = sum(amount_value(tx) for tx in selected)
@@ -521,7 +531,7 @@ def load_system_prompt() -> str:
         prompt = PROMPT_PATH.read_text(encoding="utf-8").strip()
     else:
         prompt = "你是 {{OWNER_NAME}} 的个人财务 CFO Agent。请基于提供的账本数据，用中文给出简洁、具体、可执行的回答。"
-    return prompt.replace("{{OWNER_NAME}}", OWNER_NAME)
+    return prompt.replace("{{OWNER_NAME}}", current_ledger().display_name)
 
 
 def load_profile_report_prompt() -> str:
@@ -529,7 +539,7 @@ def load_profile_report_prompt() -> str:
         prompt = PROFILE_REPORT_PROMPT_PATH.read_text(encoding="utf-8").strip()
     else:
         prompt = "请根据账本聚合特征生成有趣、克制且有证据的消费人格报告，并只返回 JSON。"
-    return prompt.replace("{{OWNER_NAME}}", OWNER_NAME)
+    return prompt.replace("{{OWNER_NAME}}", current_ledger().display_name)
 
 
 def _profile_outflows() -> list[dict]:
@@ -558,7 +568,7 @@ def build_lifestyle_health_features(transactions: list[dict]) -> dict:
     这里不直接判断健康状况：付款时间未必等于进食时间，商户名和商品词也不能
     代替营养成分。函数只负责提供给模型可复核的时段、频次和关键词证据。
     """
-    labels = category_labels(DB_PATH)
+    labels = category_labels(ledger_db())
     slots = {
         "breakfast_reference": {"label": "早餐参考时段（5-10点）", "count": 0, "amount_cny": 0.0},
         "lunch_reference": {"label": "午餐参考时段（10-15点）", "count": 0, "amount_cny": 0.0},
@@ -721,7 +731,7 @@ def profile_ledger_fingerprint(
 
 def build_profile_features(transactions: list[dict] | None = None) -> dict:
     rows = transactions if transactions is not None else _profile_outflows()
-    labels = category_labels(DB_PATH)
+    labels = category_labels(ledger_db())
     if not rows:
         return {
             "coverage": {"start_date": None, "end_date": None, "transaction_count": 0, "total_outflow_cny": 0, "active_days": 0, "active_months": 0},
@@ -1031,9 +1041,9 @@ def call_profile_report_deepseek(features: dict) -> dict:
 
 def latest_profile_report() -> dict:
     transactions = _profile_outflows()
-    fingerprint = profile_ledger_fingerprint(transactions, catalog_version=category_version(DB_PATH))
+    fingerprint = profile_ledger_fingerprint(transactions, catalog_version=category_version(ledger_db()))
     features = build_profile_features(transactions)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(ledger_db())
     conn.row_factory = sqlite3.Row
     try:
         row = conn.execute(
@@ -1062,7 +1072,7 @@ def latest_profile_report() -> dict:
 def generate_profile_report(force: bool = False) -> dict:
     transactions = _profile_outflows()
     features = build_profile_features(transactions)
-    fingerprint = profile_ledger_fingerprint(transactions, catalog_version=category_version(DB_PATH))
+    fingerprint = profile_ledger_fingerprint(transactions, catalog_version=category_version(ledger_db()))
     if not transactions:
         return {"ok": False, "code": "empty_ledger", "answer": "账本里还没有可用于生成画像的支出记录。"}
 
@@ -1077,7 +1087,7 @@ def generate_profile_report(force: bool = False) -> dict:
 
     generated_at = datetime.now().isoformat(timespec="seconds")
     report = {**generated["report"], "generated_at": generated_at}
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(ledger_db())
     try:
         conn.execute(
             """
@@ -1195,13 +1205,13 @@ def compute_period_date_range(period: str, custom_range: dict | None = None) -> 
 def get_orientation_context(period: str, budgets: dict | None = None, custom_range: dict | None = None) -> dict:
     import sqlite3 as _sqlite3
     try:
-        conn = _sqlite3.connect(str(DB_PATH))
+        conn = _sqlite3.connect(str(ledger_db()))
         conn.row_factory = _sqlite3.Row
         row = conn.execute(
             "SELECT MIN(paid_at) as earliest, MAX(paid_at) as latest, COUNT(*) as total "
             f"FROM transactions WHERE {ANALYSIS_ELIGIBLE_SQL} AND COALESCE(status, '') != 'failed'"
         ).fetchone()
-        catalog_names = category_labels(DB_PATH, enabled_only=True)
+        catalog_names = category_labels(ledger_db(), enabled_only=True)
         cats = [
             {"id": r[0], "name": catalog_names.get(r[0], r[0])}
             for r in conn.execute(
@@ -1267,7 +1277,7 @@ def _tool_query_spending_summary(args: dict) -> dict:
     if not start_date or not end_date:
         return {"error": "start_date 和 end_date 为必填项"}
     try:
-        conn = _sqlite3.connect(str(DB_PATH))
+        conn = _sqlite3.connect(str(ledger_db()))
         conn.row_factory = _sqlite3.Row
         base_where = (
             f"{ANALYSIS_ELIGIBLE_SQL} AND paid_at >= ? AND paid_at < ? "
@@ -1348,7 +1358,7 @@ def _tool_query_spending_summary(args: dict) -> dict:
             for r in rows
         ]
         if group_by == "category":
-            labels = category_labels(DB_PATH)
+            labels = category_labels(ledger_db())
             for item in result_rows:
                 item["group_name"] = labels.get(item["group"] or "uncategorized", item["group"] or "未分类")
         return {
@@ -1369,7 +1379,7 @@ def _tool_query_lifestyle_health_signals(args: dict) -> dict:
     if not start_date or not end_date:
         return {"error": "start_date 和 end_date 为必填项"}
     try:
-        conn = _sqlite3.connect(str(DB_PATH))
+        conn = _sqlite3.connect(str(ledger_db()))
         conn.row_factory = _sqlite3.Row
         rows = conn.execute(
             "SELECT paid_at, merchant, product, thing, category, amount, direction, status "
@@ -1381,7 +1391,7 @@ def _tool_query_lifestyle_health_signals(args: dict) -> dict:
             [start_date, end_date],
         ).fetchall()
         conn.close()
-        labels = category_labels(DB_PATH)
+        labels = category_labels(ledger_db())
         return {
             "period": {"start": start_date, "end": end_date},
             "features": build_lifestyle_health_features([dict(row) for row in rows]),
@@ -1401,8 +1411,8 @@ def _tool_search_transactions(args: dict) -> dict:
     max_amount = args.get("max_amount")
     limit = min(int(args.get("limit", 20)), 50)
     try:
-        labels = category_labels(DB_PATH)
-        conn = _sqlite3.connect(str(DB_PATH))
+        labels = category_labels(ledger_db())
+        conn = _sqlite3.connect(str(ledger_db()))
         conn.row_factory = _sqlite3.Row
         conditions = [ANALYSIS_ELIGIBLE_SQL, "COALESCE(status, '') != 'failed'"]
         params: list = []
@@ -1666,10 +1676,10 @@ def _safe_capture_image_path(image_path: str | None) -> Path | None:
         return None
     candidate = Path(image_path).expanduser()
     if not candidate.is_absolute():
-        candidate = ROOT_DIR / candidate
+        candidate = current_ledger().root / candidate
     try:
         resolved = candidate.resolve(strict=True)
-        data_root = (ROOT_DIR / "data").resolve(strict=True)
+        data_root = current_ledger().data_dir.resolve(strict=True)
         resolved.relative_to(data_root)
     except (FileNotFoundError, OSError, ValueError):
         return None
@@ -1679,7 +1689,7 @@ def _safe_capture_image_path(image_path: str | None) -> Path | None:
 def transaction_evidence(transaction_uid: str) -> dict | None:
     if not transaction_uid:
         return None
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(ledger_db())
     conn.row_factory = sqlite3.Row
     try:
         row = conn.execute(
@@ -1782,7 +1792,7 @@ def _edit_paid_at(value: object) -> str:
 
 def _edit_category(value: object) -> str:
     category = str(value or "").strip()
-    if category not in category_labels(DB_PATH):
+    if category not in category_labels(ledger_db()):
         raise FieldError("这个分类不在可选范围里。")
     return category
 
@@ -1848,7 +1858,7 @@ def update_transaction_fields(transaction_uid: str, fields: dict) -> dict:
     except FieldError as exc:
         return {"ok": False, "code": "invalid_field", "answer": str(exc)}
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(ledger_db())
     conn.row_factory = sqlite3.Row
     try:
         row = conn.execute(
@@ -1877,7 +1887,7 @@ def update_transaction_fields(transaction_uid: str, fields: dict) -> dict:
             evidence["persisted"] = bool(capture_hash)
             return evidence
 
-        if "category" in changed and changed["category"] not in category_labels(DB_PATH, enabled_only=True):
+        if "category" in changed and changed["category"] not in category_labels(ledger_db(), enabled_only=True):
             return {"ok": False, "code": "disabled_category", "answer": "这个分类已停用，不能再用于新的校正。"}
 
         assignments = dict(changed)
@@ -1932,10 +1942,10 @@ def _safe_related_ocr_path(image_path: str | None) -> Path | None:
     image = _safe_capture_image_path(image_path)
     if image is None:
         return None
-    candidate = ROOT_DIR / "data" / "ocr_texts" / f"{image.stem}.txt"
+    candidate = current_ledger().ocr_text_dir / f"{image.stem}.txt"
     try:
         resolved = candidate.resolve(strict=True)
-        resolved.relative_to((ROOT_DIR / "data").resolve(strict=True))
+        resolved.relative_to(current_ledger().data_dir.resolve(strict=True))
     except (FileNotFoundError, OSError, ValueError):
         return None
     return resolved if resolved.is_file() else None
@@ -1947,7 +1957,7 @@ def delete_transaction(transaction_uid: str) -> dict:
     if not transaction_uid:
         return {"ok": False, "code": "missing_uid", "answer": "缺少交易编号。"}
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(ledger_db())
     conn.row_factory = sqlite3.Row
     deleted_files: list[str] = []
     try:
@@ -1995,7 +2005,7 @@ def delete_transaction(transaction_uid: str) -> dict:
 def transaction_evidence_image_path(transaction_uid: str) -> Path | None:
     if not transaction_uid:
         return None
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(ledger_db())
     try:
         row = conn.execute(
             """
@@ -2012,8 +2022,25 @@ def transaction_evidence_image_path(transaction_uid: str) -> Path | None:
     return _safe_capture_image_path(row[0] if row else None)
 
 
-def ensure_database_schema() -> None:
-    conn = sqlite3.connect(DB_PATH)
+_SCHEMA_READY: set[str] = set()
+_SCHEMA_LOCK = threading.Lock()
+
+
+def ensure_ledger_schema(ledger: Ledger) -> None:
+    """每个账本在本进程里第一次被访问时建表/补列，之后直接跳过。"""
+    key = str(ledger.db_path.resolve())
+    if key in _SCHEMA_READY:
+        return
+    with _SCHEMA_LOCK:
+        if key in _SCHEMA_READY:
+            return
+        ledger.db_path.parent.mkdir(parents=True, exist_ok=True)
+        _create_schema(ledger.db_path)
+        _SCHEMA_READY.add(key)
+
+
+def _create_schema(db_path: Path) -> None:
+    conn = sqlite3.connect(db_path)
     try:
         ensure_bill_tables(conn)
         ensure_category_tables(conn)
@@ -2042,7 +2069,7 @@ def trigger_background_classification() -> bool:
     if DEMO_MODE:
         return False
     return start_background_enrichment(
-        DB_PATH,
+        ledger_db(),
         api_key=os.environ.get("DEEPSEEK_API_KEY"),
         base_url=DEEPSEEK_BASE_URL,
         model=DEEPSEEK_MODEL,
@@ -2078,6 +2105,7 @@ def sync_mail_once() -> dict:
             mark_seen=True,
             include_seen=False,
             max_candidates=max_candidates,
+            ledger=current_ledger(),
         )
     finally:
         safe_logout(client)
@@ -2125,6 +2153,32 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(FRONTEND_DIR), **kwargs)
 
+    def request_ledger(self) -> Ledger:
+        return DEFAULT_LEDGER
+
+    def dispatch_with_ledger(self, route) -> None:
+        # 请求头解析完才知道是谁，所以在这里而不是更早绑定账本；
+        # 业务函数一律通过 current_ledger() 读取，请求结束即解绑。
+        ledger = self.request_ledger()
+        ensure_ledger_schema(ledger)
+        with use_ledger(ledger):
+            route()
+
+    def do_GET(self) -> None:
+        self.dispatch_with_ledger(self.route_GET)
+
+    def do_POST(self) -> None:
+        self.dispatch_with_ledger(self.route_POST)
+
+    def do_PATCH(self) -> None:
+        self.dispatch_with_ledger(self.route_PATCH)
+
+    def do_PUT(self) -> None:
+        self.dispatch_with_ledger(self.route_PUT)
+
+    def do_DELETE(self) -> None:
+        self.dispatch_with_ledger(self.route_DELETE)
+
     def end_headers(self) -> None:
         path = urlparse(self.path).path
         if path.startswith("/assets/"):
@@ -2147,7 +2201,7 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
     def send_login_page(self, error: str = "", status: HTTPStatus = HTTPStatus.OK) -> None:
         body = (
             LOGIN_PAGE
-            .replace("{owner}", html.escape(OWNER_NAME))
+            .replace("{owner}", html.escape(current_ledger().display_name))
             .replace("{error}", html.escape(error))
         ).encode("utf-8")
         self.send_response(status)
@@ -2209,7 +2263,7 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
             return False
         return True
 
-    def do_GET(self) -> None:
+    def route_GET(self) -> None:
         parsed_url = urlparse(self.path)
         path = parsed_url.path
         if path == "/health":
@@ -2240,14 +2294,14 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/categories":
             try:
-                self.send_json(get_catalog(DB_PATH, demo=DEMO_MODE))
+                self.send_json(get_catalog(ledger_db(), demo=DEMO_MODE))
             except Exception as exc:
                 self.send_json({"ok": False, "answer": safe_error_message("分类目录读取失败", exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
             return
 
         if path == "/api/custom-prompts":
             try:
-                self.send_json(list_prompts(DB_PATH))
+                self.send_json(list_prompts(ledger_db()))
             except Exception as exc:
                 self.send_json({"ok": False, "answer": safe_error_message("我的常问读取失败", exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
             return
@@ -2292,7 +2346,7 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
 
         super().do_GET()
 
-    def do_POST(self) -> None:
+    def route_POST(self) -> None:
         path = urlparse(self.path).path
         if path == "/api/login":
             if not access_token_configured():
@@ -2333,7 +2387,7 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "code": "demo_readonly", "answer": "演示模式只能查看分类，不能新建。"}, status=HTTPStatus.FORBIDDEN)
                 return
             try:
-                item = create_category(DB_PATH, self.read_json_body())
+                item = create_category(ledger_db(), self.read_json_body())
                 self.send_json({"ok": True, "category": item}, status=HTTPStatus.CREATED)
             except CategoryError as exc:
                 self.category_error(exc)
@@ -2347,7 +2401,7 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
             if not self.allow_category_write("我的常问"):
                 return
             try:
-                item = create_prompt(DB_PATH, self.read_json_body())
+                item = create_prompt(ledger_db(), self.read_json_body())
                 self.send_json({"ok": True, "prompt": item}, status=HTTPStatus.CREATED)
             except CategoryError as exc:
                 self.category_error(exc)
@@ -2460,14 +2514,14 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
         except Exception as exc:
             self.send_json({"ok": False, "answer": safe_error_message("对话请求失败", exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
-    def do_PATCH(self) -> None:
+    def route_PATCH(self) -> None:
         path = urlparse(self.path).path
         prompt_prefix = "/api/custom-prompts/"
         if path.startswith(prompt_prefix) and path[len(prompt_prefix):]:
             if not self.allow_category_write("我的常问"):
                 return
             try:
-                item = patch_prompt(DB_PATH, path[len(prompt_prefix):], self.read_json_body())
+                item = patch_prompt(ledger_db(), path[len(prompt_prefix):], self.read_json_body())
                 self.send_json({"ok": True, "prompt": item})
             except CategoryError as exc:
                 self.category_error(exc)
@@ -2484,7 +2538,7 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
         if not self.allow_category_write():
             return
         try:
-            item = patch_category(DB_PATH, path[len(prefix):], self.read_json_body())
+            item = patch_category(ledger_db(), path[len(prefix):], self.read_json_body())
             self.send_json({"ok": True, "category": item})
         except CategoryError as exc:
             self.category_error(exc)
@@ -2493,13 +2547,13 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
         except Exception as exc:
             self.send_json({"ok": False, "answer": safe_error_message("保存分类失败", exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
-    def do_PUT(self) -> None:
+    def route_PUT(self) -> None:
         path = urlparse(self.path).path
         if path == "/api/custom-prompts/order":
             if not self.allow_category_write("我的常问"):
                 return
             try:
-                items = set_prompt_order(DB_PATH, self.read_json_body().get("prompt_ids"))
+                items = set_prompt_order(ledger_db(), self.read_json_body().get("prompt_ids"))
                 self.send_json({"ok": True, "prompts": items})
             except CategoryError as exc:
                 self.category_error(exc)
@@ -2516,7 +2570,7 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
             return
         try:
             payload = self.read_json_body()
-            items = set_primary_order(DB_PATH, payload.get("category_ids"))
+            items = set_primary_order(ledger_db(), payload.get("category_ids"))
             self.send_json({"ok": True, "categories": items})
         except CategoryError as exc:
             self.category_error(exc)
@@ -2525,14 +2579,14 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
         except Exception as exc:
             self.send_json({"ok": False, "answer": safe_error_message("保存常用顺序失败", exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
-    def do_DELETE(self) -> None:
+    def route_DELETE(self) -> None:
         path = urlparse(self.path).path
         prompt_prefix = "/api/custom-prompts/"
         if path.startswith(prompt_prefix) and path[len(prompt_prefix):]:
             if not self.allow_category_write("我的常问"):
                 return
             try:
-                self.send_json(delete_prompt(DB_PATH, path[len(prompt_prefix):]))
+                self.send_json(delete_prompt(ledger_db(), path[len(prompt_prefix):]))
             except CategoryError as exc:
                 self.category_error(exc)
             except Exception as exc:
@@ -2546,7 +2600,7 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
         if not self.allow_category_write():
             return
         try:
-            self.send_json(delete_category(DB_PATH, path[len(prefix):]))
+            self.send_json(delete_category(ledger_db(), path[len(prefix):]))
         except CategoryError as exc:
             self.category_error(exc)
         except Exception as exc:
@@ -2559,17 +2613,18 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8091)
     args = parser.parse_args()
 
-    ensure_database_schema()
+    ensure_ledger_schema(DEFAULT_LEDGER)
     # 上次进程可能是在分类跑到一半时挂的，那些行会一直停在 pending。
     # 启动时先收一次尾，保证界面上不会留着「识别中」。
     if not DEMO_MODE:
         try:
-            settled = settle_stuck_transactions(DB_PATH)
+            settled = settle_stuck_transactions(DEFAULT_LEDGER.db_path)
             if settled:
                 print(f"[CFO] 结案 {settled} 笔滞留的待分类交易")
         except Exception as exc:  # 清扫失败不该挡住启动
             print(f"[CFO] 待分类交易清扫跳过：{type(exc).__name__}")
-    trigger_background_classification()
+    with use_ledger(DEFAULT_LEDGER):
+        trigger_background_classification()
     server = ThreadingHTTPServer((args.host, args.port), CFORequestHandler)
     print(f"Serving CFO web app at http://{args.host}:{args.port}/")
     server.serve_forever()

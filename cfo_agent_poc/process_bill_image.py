@@ -5,6 +5,7 @@ from pathlib import Path
 
 from bill_store import DATA_DIR, parsed_to_json, store_bill_capture
 from ocr_providers import ocr_image
+from tenancy import Ledger
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -18,10 +19,14 @@ def process_image(
     source: str = "email_screenshot",
     source_hint: str | None = None,
     captured_at: str | None = None,
+    *,
+    ledger: Ledger | None = None,
 ):
+    """OCR 一张截图并入库。``ledger`` 省略时写本地单账本（命令行用法）。"""
     ocr_text = ocr_image(image_path)
-    OCR_TEXT_DIR.mkdir(parents=True, exist_ok=True)
-    text_path = OCR_TEXT_DIR / (Path(image_path).stem + ".txt")
+    text_dir = ledger.ocr_text_dir if ledger is not None else OCR_TEXT_DIR
+    text_dir.mkdir(parents=True, exist_ok=True)
+    text_path = text_dir / (Path(image_path).stem + ".txt")
     text_path.write_text(ocr_text, encoding="utf-8")
     return store_bill_capture(
         ocr_text,
@@ -29,6 +34,8 @@ def process_image(
         source_hint=source_hint,
         image_path=image_path,
         captured_at=captured_at,
+        db_path=ledger.db_path if ledger is not None else None,
+        root_dir=ledger.root if ledger is not None else None,
     )
 
 
@@ -38,6 +45,7 @@ def main() -> None:
     parser.add_argument("--source", default="email_screenshot")
     parser.add_argument("--source-hint")
     parser.add_argument("--captured-at")
+    parser.add_argument("--ledger-dir", help="账本根目录（含 data/cfo.sqlite），默认是 cfo_agent_poc 本身")
     args = parser.parse_args()
 
     parsed = process_image(
@@ -45,10 +53,10 @@ def main() -> None:
         source=args.source,
         source_hint=args.source_hint,
         captured_at=args.captured_at,
+        ledger=Ledger(Path(args.ledger_dir).resolve()) if args.ledger_dir else None,
     )
     print(parsed_to_json(parsed))
 
 
 if __name__ == "__main__":
     main()
-

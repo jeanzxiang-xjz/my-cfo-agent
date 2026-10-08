@@ -31,12 +31,13 @@ DATA_DIR = PROJECT_DIR / "data"
 APP_DB = DATA_DIR / "cfo.sqlite"
 
 
-def portable_image_path(image_path: str | Path | None) -> str | None:
-    """Return a project-relative image reference for database persistence.
+def portable_image_path(image_path: str | Path | None, root_dir: str | Path | None = None) -> str | None:
+    """Return a ledger-relative image reference for database persistence.
 
-    Images already inside ``cfo_agent_poc`` are stored relative to that
+    Images already inside the ledger root (``cfo_agent_poc`` for the single
+    local ledger, ``tenants/<id>`` on the server) are stored relative to that
     directory (for example ``data/mail_attachments/mail_123_1.png``), so the
-    reference survives moving the whole project.  An image supplied from
+    reference survives moving the whole ledger.  An image supplied from
     elsewhere is copied into ``data/evidence`` before its relative reference
     is returned.  Missing relative paths are kept as-is so old records can be
     repaired later without reintroducing an absolute machine path.
@@ -50,7 +51,7 @@ def portable_image_path(image_path: str | Path | None) -> str | None:
         normalized = candidate.as_posix()
         return normalized[2:] if normalized.startswith("./") else normalized
 
-    project_root = PROJECT_DIR.resolve()
+    project_root = Path(root_dir if root_dir is not None else PROJECT_DIR).resolve()
     resolved = candidate.resolve(strict=False)
     try:
         return resolved.relative_to(project_root).as_posix()
@@ -61,7 +62,7 @@ def portable_image_path(image_path: str | Path | None) -> str | None:
     # the bill usable by copying the image into the project's evidence store.
     if not resolved.is_file():
         return None
-    evidence_dir = DATA_DIR / "evidence"
+    evidence_dir = (project_root / "data" if root_dir is not None else DATA_DIR) / "evidence"
     evidence_dir.mkdir(parents=True, exist_ok=True)
     suffix = resolved.suffix.lower() or ".png"
     digest = hashlib.sha256(resolved.read_bytes()).hexdigest()[:24]
@@ -279,9 +280,10 @@ def ensure_columns(conn: sqlite3.Connection, table: str, columns: dict[str, str]
                     raise
 
 
-def connect() -> sqlite3.Connection:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(APP_DB)
+def connect(db_path: str | Path | None = None) -> sqlite3.Connection:
+    target = Path(db_path) if db_path is not None else APP_DB
+    target.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(target)
     ensure_bill_tables(conn)
     ensure_category_tables(conn)
     conn.commit()
@@ -1170,9 +1172,14 @@ def store_bill_capture(
     source_hint: str | None = None,
     image_path: str | None = None,
     captured_at: str | None = None,
+    *,
+    db_path: str | Path | None = None,
+    root_dir: str | Path | None = None,
 ) -> ParsedBill:
+    """入库一张截图的 OCR 结果。``db_path``/``root_dir`` 指定写进哪个账本，
+    省略时用本地单账本（``cfo_agent_poc/data/cfo.sqlite``），供命令行工具使用。"""
     parsed = parse_bill_text(ocr_text, source=source, source_hint=source_hint)
-    stored_image_path = portable_image_path(image_path)
+    stored_image_path = portable_image_path(image_path, root_dir)
     capture_hash = hashlib.sha256(f"{source}|{ocr_text}|{stored_image_path or ''}".encode("utf-8")).hexdigest()[:32]
     # 没有平台交易号时，解析字段本身不足以稳定去重：两张缺时间、缺商户且
     # 金额相同的截图会生成同一个 UID，后来的记录会把前一条覆盖。此时让
@@ -1181,7 +1188,7 @@ def store_bill_capture(
         parsed.transaction_uid = f"capture_{capture_hash[:24]}"
     now = datetime.now().isoformat(timespec="seconds")
 
-    conn = connect()
+    conn = connect(db_path)
     conn.execute(
         """
         insert or ignore into raw_bill_captures

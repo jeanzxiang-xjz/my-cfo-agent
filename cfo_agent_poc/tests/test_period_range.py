@@ -5,7 +5,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 
 WEB_APP_DIR = Path(__file__).resolve().parents[1] / "web_app"
@@ -128,7 +127,7 @@ class OrientationContextCustomRangeTests(unittest.TestCase):
         self.addCleanup(self.temp_dir.cleanup)
 
     def test_summary_covers_exactly_the_selected_range(self) -> None:
-        with patch.object(server, "DB_PATH", self.db_path):
+        with server.use_ledger(server.Ledger(self.db_path.parent, db_file=self.db_path)):
             context = server.get_orientation_context(
                 "custom", {"day": 100}, {"start": "2026-08-01", "end": "2026-08-15"}
             )
@@ -144,7 +143,7 @@ class OrientationContextCustomRangeTests(unittest.TestCase):
         self.assertAlmostEqual(summary["total_outflow_cny"], 100.0, places=2)
 
     def test_bad_custom_range_degrades_to_all(self) -> None:
-        with patch.object(server, "DB_PATH", self.db_path):
+        with server.use_ledger(server.Ledger(self.db_path.parent, db_file=self.db_path)):
             context = server.get_orientation_context("custom", {}, {"start": "", "end": ""})
 
         # 落回「最早交易 ~ 明日零点」，5 笔全部计入，而不是报错或返回空。

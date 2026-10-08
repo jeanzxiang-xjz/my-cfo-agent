@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -10,11 +11,14 @@ if str(WEB_APP_DIR) not in sys.path:
     sys.path.insert(0, str(WEB_APP_DIR))
 
 from server import (
+    Ledger,
     build_lifestyle_health_features,
     build_profile_features,
+    ensure_ledger_schema,
     load_profile_report_prompt,
     normalize_profile_report,
     profile_ledger_fingerprint,
+    use_ledger,
 )
 
 
@@ -36,6 +40,16 @@ def sample_transaction(uid: str, amount: float, paid_at: str, merchant: str, cat
 
 
 class ProfileReportTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # 分类名称和提示词里的称呼都按账本取，给每个用例一个空的临时账本
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        ledger = Ledger(Path(temp_dir.name))
+        ensure_ledger_schema(ledger)
+        binding = use_ledger(ledger)
+        binding.__enter__()
+        self.addCleanup(binding.__exit__, None, None, None)
+
     def test_profile_prompt_requires_grounded_lifestyle_guidance(self) -> None:
         prompt = load_profile_report_prompt()
 

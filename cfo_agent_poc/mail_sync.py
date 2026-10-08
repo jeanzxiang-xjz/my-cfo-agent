@@ -9,10 +9,9 @@ from email.message import Message
 from pathlib import Path
 
 from process_bill_image import process_image
+from tenancy import Ledger
 
 
-DATA_DIR = Path(__file__).resolve().parent / "data"
-ATTACHMENT_DIR = DATA_DIR / "mail_attachments"
 DEFAULT_SUBJECT = "CFO_CAPTURE_SCREENSHOT"
 
 
@@ -98,8 +97,11 @@ def process_mailbox_once_detailed(
     mark_seen: bool,
     include_seen: bool,
     max_candidates: int,
+    *,
+    ledger: Ledger,
 ) -> dict:
-    ATTACHMENT_DIR.mkdir(parents=True, exist_ok=True)
+    attachment_dir = ledger.data_dir / "mail_attachments"
+    attachment_dir.mkdir(parents=True, exist_ok=True)
     result = {
         "candidate_count": 0,
         "matched_messages": 0,
@@ -130,13 +132,14 @@ def process_mailbox_once_detailed(
         attachment_count = 0
         for index, (filename, payload) in enumerate(image_attachments(message), start=1):
             suffix = Path(filename or "").suffix or ".png"
-            out_path = ATTACHMENT_DIR / f"mail_{uid.decode()}_{index}{suffix}"
+            out_path = attachment_dir / f"mail_{uid.decode()}_{index}{suffix}"
             out_path.write_bytes(payload)
             parsed = process_image(
                 str(out_path),
                 source="email_screenshot",
                 source_hint=source_hint,
                 captured_at=date_header or datetime.now().isoformat(timespec="seconds"),
+                ledger=ledger,
             )
             result["items"].append({
                 "uid": uid.decode(),

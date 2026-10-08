@@ -38,14 +38,15 @@ class IncompleteTransactionTests(unittest.TestCase):
             patch.object(bill_store, "APP_DB", self.db_path),
             patch.object(bill_store, "PROJECT_DIR", self.root),
             patch.object(bill_store, "DATA_DIR", self.root / "data"),
-            patch.object(server, "DB_PATH", self.db_path),
-            patch.object(server, "ROOT_DIR", self.root),
             patch.object(server, "DEMO_MODE", False),
         ]
         for item in self.patches:
             item.start()
+        self.ledger = server.use_ledger(server.Ledger(self.root, db_file=self.db_path))
+        self.ledger.__enter__()
 
     def tearDown(self) -> None:
+        self.ledger.__exit__(None, None, None)
         for item in reversed(self.patches):
             item.stop()
         self.temp_dir.cleanup()

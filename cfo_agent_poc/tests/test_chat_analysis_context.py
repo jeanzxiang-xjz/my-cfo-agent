@@ -5,7 +5,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 
 WEB_APP_DIR = Path(__file__).resolve().parents[1] / "web_app"
@@ -50,7 +49,7 @@ class ChatAnalysisContextTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_time_slot_grouping_uses_payment_hours(self) -> None:
-        with patch.object(server, "DB_PATH", self.db_path):
+        with server.use_ledger(server.Ledger(self.db_path.parent, db_file=self.db_path)):
             result = server._tool_query_spending_summary({
                 "start_date": "2026-08-01T00:00:00",
                 "end_date": "2026-09-01T00:00:00",
@@ -64,14 +63,15 @@ class ChatAnalysisContextTests(unittest.TestCase):
         self.assertEqual(rows["深夜（22-24点）"]["outflow_count"], 1)
 
     def test_chat_prompt_limits_lifestyle_guidance_to_grounded_analysis(self) -> None:
-        prompt = server.load_system_prompt()
+        with server.use_ledger(server.Ledger(self.db_path.parent, db_file=self.db_path)):
+            prompt = server.load_system_prompt()
 
         self.assertIn("消费健康提醒", prompt)
         self.assertIn("query_lifestyle_health_signals", prompt)
         self.assertIn("付款时间不等于进食或睡眠时间", prompt)
 
     def test_lifestyle_tool_combines_timing_and_food_type(self) -> None:
-        with patch.object(server, "DB_PATH", self.db_path):
+        with server.use_ledger(server.Ledger(self.db_path.parent, db_file=self.db_path)):
             result = server._tool_query_lifestyle_health_signals({
                 "start_date": "2026-08-01T00:00:00",
                 "end_date": "2026-09-01T00:00:00",
@@ -84,7 +84,7 @@ class ChatAnalysisContextTests(unittest.TestCase):
         self.assertIn("sweet_drinks_desserts", keys)
 
     def test_orientation_context_includes_time_distribution(self) -> None:
-        with patch.object(server, "DB_PATH", self.db_path):
+        with server.use_ledger(server.Ledger(self.db_path.parent, db_file=self.db_path)):
             context = server.get_orientation_context("all", {"day": 100})
 
         summary = context["current_period_summary"]

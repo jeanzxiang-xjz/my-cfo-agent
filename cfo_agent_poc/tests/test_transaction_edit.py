@@ -41,15 +41,17 @@ class TransactionEditTests(unittest.TestCase):
         self.db_path = Path(self.temp_dir.name) / "cfo.sqlite"
         self.patches = [
             patch.object(bill_store, "APP_DB", self.db_path),
-            patch.object(server, "DB_PATH", self.db_path),
             patch.object(server, "DEMO_MODE", False),
         ]
         for item in self.patches:
             item.start()
+        self.ledger = server.use_ledger(server.Ledger(self.db_path.parent, db_file=self.db_path))
+        self.ledger.__enter__()
         parsed = bill_store.store_bill_capture(BILL, source="test", source_hint="wechat")
         self.uid = parsed.transaction_uid
 
     def tearDown(self) -> None:
+        self.ledger.__exit__(None, None, None)
         for item in self.patches:
             item.stop()
         self.temp_dir.cleanup()
@@ -258,12 +260,7 @@ class ReviewClearsUnsureFlagTests(TransactionEditTests):
         """前端靠 data.json 里的 reviewed_at 过滤，取不到就等于没修。"""
         server.update_transaction_fields(self.uid, {"thing": "饭"})
 
-        # build_payload 来自 generate_snapshot，它持有自己的 DB_PATH，
-        # patch server.DB_PATH 影响不到它。
-        import generate_snapshot
-
-        with patch.object(generate_snapshot, "DB_PATH", self.db_path):
-            payload = server.build_payload()
+        payload = server.build_payload()
         entry = next(tx for tx in payload["transactions"] if tx["transaction_uid"] == self.uid)
         self.assertIsNotNone(entry["reviewed_at"])
 
