@@ -1,0 +1,32 @@
+# 服务器上已经有 Nginx 时用这份（没有的话更推荐 Caddy，证书全自动）。
+# 证书可以用 certbot 申请：sudo certbot --nginx -d cfo.example.com
+# 把 cfo.example.com 换成你的域名，放进 /etc/nginx/conf.d/ 后 nginx -t && systemctl reload nginx。
+
+server {
+    listen 80;
+    server_name cfo.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name cfo.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/cfo.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/cfo.example.com/privkey.pem;
+
+    # 截图上传上限，和 .env 的 CFO_MAX_UPLOAD_BYTES（默认 15MB）对齐
+    client_max_body_size 16m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8091;
+        # 这几行必须有：应用用 Host 校验写请求来源，用 X-Forwarded-Proto 判断 HTTPS，
+        # 用 X-Forwarded-For 做登录限流。少了 Host，网页上的保存、上传都会被当成跨站请求拒掉。
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # 上传截图后要等 OCR 结果（最多约 8 秒），超时别设太短
+        proxy_read_timeout 60s;
+    }
+}

@@ -139,13 +139,12 @@ function TopRail() {
             </svg>
             <span className="rail-action-text">趋势</span>
           </button>
-          <button id="openSyncModal" className="rail-action" type="button" aria-label="同步邮箱账单" title="同步邮箱账单">
+          <button id="openCaptureModal" className="rail-action" type="button" aria-label="记一笔：连接 iPhone 或上传截图" title="记一笔">
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path d="M13.6 6.9A5.7 5.7 0 0 0 3.2 5.1" />
-              <path d="M2.4 9.1a5.7 5.7 0 0 0 10.4 1.8" />
-              <path d="M13.9 2.6v3.9h-3.9M2.1 13.4V9.5H6" />
+              <rect x="4.2" y="1.8" width="7.6" height="12.4" rx="1.8" />
+              <path d="M8 5.6v4.4M5.8 7.8h4.4" />
             </svg>
-            <span className="rail-action-text">同步</span>
+            <span className="rail-action-text">记一笔</span>
           </button>
           <button id="openBudgetSettings" className="rail-action rail-action-icon" type="button" aria-label="预算配置" title="预算配置">
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -729,75 +728,91 @@ function TrendModal() {
   );
 }
 
-function SyncModal() {
+function CaptureModal() {
   return (
-    <div id="syncModal" className="modal-backdrop" hidden>
-      <section className="modal-shell sync-modal" role="dialog" aria-modal="true" aria-labelledby="syncTitle">
+    <div id="captureModal" className="modal-backdrop" hidden>
+      <section className="modal-shell sync-modal" role="dialog" aria-modal="true" aria-labelledby="captureTitle">
         <div className="modal-header">
           <div>
-            <h2 id="syncTitle">消费数据同步</h2>
-            <p id="syncSubtitle">连接邮箱，拉取最新账单截图并写入本地账本。</p>
+            <h2 id="captureTitle">记一笔</h2>
+            <p>支付后在 iPhone 上点一下快捷指令，账单截图直接传进你的账本。</p>
           </div>
-          <button className="modal-close" type="button" data-modal-close="syncModal" aria-label="关闭消费数据同步">
+          <button className="modal-close" type="button" data-modal-close="captureModal" aria-label="关闭记一笔">
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
               <path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6" />
             </svg>
           </button>
         </div>
 
+        <p className="category-demo-notice" id="captureDemoNotice" hidden>
+          演示模式不能连接 iPhone 或上传截图。
+        </p>
+
         <div className="sync-body">
-          <aside className="sync-guidance" aria-labelledby="syncGuidanceTitle">
+          <aside className="sync-guidance" aria-labelledby="captureGuidanceTitle">
             <span className="sync-guidance-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false">
                 <path d="M6.5 4.5h11v15h-11zM9 8h6M9 11.5h6M9 15h3.5" />
               </svg>
             </span>
             <div>
-              <strong id="syncGuidanceTitle">同步时，请先打开账单详情页</strong>
-              <p>确认金额、交易时间和商户完整显示后，再触发快捷指令。</p>
+              <strong id="captureGuidanceTitle">截图前，先打开账单详情页</strong>
+              <p>确认金额、支付时间和商户都完整显示在屏幕上，再点快捷指令。</p>
             </div>
           </aside>
 
-          <div className="sync-state-card" id="syncStateCard">
-            <span id="syncStatusLabel">准备同步</span>
-            <strong id="syncStatusTitle">等待开始</strong>
-            <small id="syncStatusMeta">将扫描未读账单邮件，成功处理后自动标记已读。</small>
-          </div>
+          <section className="sync-state-card phone-link-card" id="phoneLinkCard" aria-labelledby="phoneLinkTitle">
+            <span id="phoneLinkLabel">连接 iPhone</span>
+            <strong id="phoneLinkTitle">读取中…</strong>
+            <small id="phoneLinkMeta" />
 
-          <div className="sync-metrics" aria-label="同步指标">
-            <div>
-              <span className="micro-label">候选邮件</span>
-              <strong id="syncCandidateCount">--</strong>
+            <div className="phone-link-secret" id="phoneLinkSecret" hidden>
+              <code id="phoneLinkToken" />
+              <button className="btn btn-quiet" type="button" id="copyUploadToken">
+                复制密钥
+              </button>
+              <p>密钥只显示这一次，请现在复制。安装快捷指令时粘贴它；以后忘了就重新生成一个。</p>
             </div>
-            <div>
-              <span className="micro-label">命中邮件</span>
-              <strong id="syncMatchedCount">--</strong>
+
+            <ol className="phone-link-steps">
+              <li>生成上传密钥并复制</li>
+              <li>安装「记一笔」快捷指令，按提示粘贴密钥</li>
+              <li>支付后打开账单详情页，点一下「记一笔」</li>
+            </ol>
+
+            <div className="phone-link-url">
+              <span>上传地址</span>
+              <code id="phoneLinkUrl">--</code>
+              <button className="link-button" type="button" id="copyUploadUrl">
+                复制
+              </button>
             </div>
-            <div>
-              <span className="micro-label">处理附件</span>
-              <strong id="syncAttachmentCount">--</strong>
+
+            <div className="phone-link-actions">
+              <a className="btn btn-primary" id="installShortcutLink" href="#" target="_blank" rel="noopener noreferrer" hidden>
+                安装快捷指令
+              </a>
+              <button className="btn btn-quiet" type="button" id="rotateUploadToken">
+                生成上传密钥
+              </button>
+              <button className="btn btn-quiet" type="button" id="revokeUploadToken" hidden>
+                停用密钥
+              </button>
             </div>
-            <div>
-              <span className="micro-label">新增交易</span>
-              <strong id="syncNewCount">--</strong>
-            </div>
-            <div>
-              <span className="micro-label">待订正</span>
-              <strong id="syncCorrectionCount">--</strong>
-            </div>
-          </div>
+          </section>
 
           <div className="sync-log-panel">
             <div className="mini-heading">
-              <h3>同步明细</h3>
-              <span id="syncFinishedAt">未开始</span>
+              <h3>最近上传</h3>
+              <span id="captureListMeta">--</span>
             </div>
-            <div id="syncItemList" className="sync-item-list" />
+            <div id="captureItemList" className="sync-item-list" />
           </div>
 
           <div className="sync-actions">
-            <button id="startSyncButton" className="btn btn-primary" type="button">
-              开始同步
+            <input id="captureFileInput" type="file" accept="image/png,image/jpeg" multiple hidden />
+            <button id="pickCaptureFiles" className="btn btn-primary" type="button">
+              上传截图
             </button>
           </div>
         </div>
@@ -1177,7 +1192,7 @@ export default function App() {
           <SiteFooter />
         </main>
         <TrendModal />
-        <SyncModal />
+        <CaptureModal />
         <BudgetModal />
         <AccountModal />
         <RangePickerModal />

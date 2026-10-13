@@ -1,0 +1,23 @@
+# systemd 服务：开机自启、挂了自动拉起。按实际路径和用户修改后：
+#   sudo cp cfo_agent_poc/deploy/cfo-web.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now cfo-web
+#   journalctl -u cfo-web -f        # 看日志
+#
+# 前端产物 dist/ 建议在开发机 npm run build 后上传，服务器不必装 Node。
+
+[Unit]
+Description=Jeanz CFO web app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cfo
+WorkingDirectory=/srv/my-cfo-agent
+# .env 里放 CFO_HOME、CFO_PUBLIC_BASE_URL、DeepSeek 与阿里云 OCR 的密钥（server.py 启动时自己会读）
+ExecStart=/srv/my-cfo-agent/.venv/bin/python -u cfo_agent_poc/web_app/server.py --host 127.0.0.1 --port 8091
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

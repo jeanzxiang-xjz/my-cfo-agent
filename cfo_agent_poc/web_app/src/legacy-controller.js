@@ -168,7 +168,10 @@ let state = {
   ledgerAmountSort: "date",
   chatHistory: [],
   chatBusy: false,
-  syncBusy: false,
+  captureBusy: false,
+  capturePollTimer: 0,
+  freshUploadToken: null,
+  snapshotLoadedAt: 0,
   budgets: loadBudgetConfig(),
   trendMode: "day",
   activeTrendSeries: [],
@@ -2863,11 +2866,32 @@ async function loadInvites() {
 }
 
 async function copyText(text) {
+  // navigator.clipboard 只在 HTTPS 和 localhost 下才有；用局域网 IP 打开（手机调试）时是 undefined，
+  // Safari 里请求返回后再复制也会被拒。两种情况都退回到「选中隐藏文本框再执行复制」。
   try {
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
+    return legacyCopyText(text);
+  }
+}
+
+function legacyCopyText(text) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  // 字号不小于 16px，iOS 才不会在选中时放大页面
+  textarea.style.cssText = "position:fixed;top:0;left:0;opacity:0;font-size:16px;";
+  document.body.appendChild(textarea);
+  try {
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, text.length); // iOS 只认这个
+    return document.execCommand("copy");
+  } catch {
     return false;
+  } finally {
+    textarea.remove();
   }
 }
 
@@ -3310,7 +3334,7 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), selec
 const modalReturnFocus = new Map();
 
 function syncModalPageLock() {
-  const hasOpenLayer = ["profileReportModal", "categoryModal", "promptModal", "trendModal", "budgetModal", "syncModal", "evidenceDrawer"]
+  const hasOpenLayer = ["profileReportModal", "categoryModal", "promptModal", "trendModal", "budgetModal", "captureModal", "accountModal", "evidenceDrawer"]
     .map($)
     .some((layer) => layer && !layer.hidden);
   document.body.classList.toggle("modal-open", hasOpenLayer);
@@ -3331,7 +3355,7 @@ function openModal(id) {
   if (id === "trendModal") renderTrendModal();
   if (id === "budgetModal") renderBudgetForm();
   if (id === "accountModal") renderAccountModal();
-  if (id === "syncModal") resetSyncModal();
+  if (id === "captureModal") loadCaptureModal();
   if (id === "profileReportModal") loadProfileReportForModal();
   if (id === "promptModal") {
     state.promptEditing = null;
@@ -3386,7 +3410,7 @@ function closeModal(id) {
 }
 
 function topmostOpenModal() {
-  return ["rangeModal", "profileReportModal", "categoryModal", "promptModal", "budgetModal", "syncModal", "trendModal"].map($).find((modal) => modal && !modal.hidden) || null;
+  return ["rangeModal", "profileReportModal", "categoryModal", "promptModal", "budgetModal", "captureModal", "accountModal", "trendModal"].map($).find((modal) => modal && !modal.hidden) || null;
 }
 
 function topmostOpenLayer() {
@@ -3752,7 +3776,7 @@ function renderHeader() {
 
   $("headerSummary").textContent = latest
     ? `账本已同步 · ${state.transactions.length} 笔记录`
-    : "账本还没有数据，可以先同步邮箱账单。";
+    : "账本还没有数据，点右上角「记一笔」上传第一张账单截图。";
 
   const eyebrow = document.querySelector(".agent-eyebrow");
   if (state.demo && eyebrow && !eyebrow.querySelector(".demo-badge")) {
@@ -3872,7 +3896,7 @@ function renderHeroSpark() {
     const count = scopedTransactions("all").filter((tx) => positiveSpend(tx) > 0).length;
     $("heroProfileMeta").textContent = count
       ? `基于 ${count} 笔消费，生成专属账单画像`
-      : "同步消费记录后，就能生成专属画像";
+      : "记下消费后，就能生成专属画像";
     $("heroProfileActionLabel").textContent = state.profileReport ? "查看画像" : "生成画像";
     button.setAttribute("aria-label", state.profileReport ? "查看账单人格报告" : "生成账单人格报告");
     return;
@@ -4228,7 +4252,7 @@ function renderComposition() {
     $("coreNodes").innerHTML = emptyState({
       icon: "spark",
       title: "还没有可拆解的消费",
-      hint: "同步账单或换一个周期，场景权重会自动出现。",
+      hint: "记几笔账或换一个周期，场景权重会自动出现。",
     });
     return;
   }
@@ -4553,7 +4577,7 @@ function renderSectionNarrative(items) {
   if (!selected.length) {
     node.textContent = correctionCount
       ? `账本已保留 ${correctionCount} 笔待订正记录，补全后才会进入消费分析。`
-      : `${periodLabel()}还没有消费记录，换个周期，或者同步一次邮箱账单。`;
+      : `${periodLabel()}还没有消费记录，换个周期，或者用「记一笔」上传账单截图。`;
     return;
   }
 
@@ -4572,7 +4596,7 @@ function renderDecisionFeed() {
     $("decisionFeed").innerHTML = emptyState({
       icon: "alert",
       title: `${periodLabel()}还没有消费记录`,
-      hint: "换一个周期，或者同步一次邮箱账单，Agent 就会开始给结论。",
+      hint: "换一个周期，或者用「记一笔」上传账单截图，Agent 就会开始给结论。",
     });
     return;
   }
@@ -4773,7 +4797,7 @@ function renderCorrectionQueue() {
           >
             <span class="correction-item-main">
               <strong>${escapeHtml(title)}</strong>
-              <small>${captured ? `同步于 ${escapeHtml(displayDateTime(captured))}` : "同步时间未知"}</small>
+              <small>${captured ? `记录于 ${escapeHtml(displayDateTime(captured))}` : "记录时间未知"}</small>
             </span>
             <span class="correction-fields" aria-label="待补字段">
               ${missing.map((field) => `<em>${escapeHtml(CORRECTION_FIELD_LABELS[field] || field)}待补</em>`).join("")}
@@ -4821,7 +4845,7 @@ function renderTransactions() {
       ? emptyState({
           icon: isFiltered ? "filter" : "empty",
           title: isFiltered ? `${scopeName}在${rangeName}没有记录` : `${periodLabel()}还没有交易`,
-          hint: isFiltered ? "换个分类，或者清掉筛选看全部。" : "把账单截图发到绑定邮箱，同步后就会出现在这里。",
+          hint: isFiltered ? "换个分类，或者清掉筛选看全部。" : "支付后用快捷指令「记一笔」上传截图，就会出现在这里。",
           action: isFiltered
             ? `<button class="btn btn-quiet" type="button" data-filter="all">清掉筛选</button>`
             : "",
@@ -4829,8 +4853,8 @@ function renderTransactions() {
       : emptyState({
           icon: "mail",
           title: "账本还是空的",
-          hint: "从「同步」拉取一次未读账单邮件，Agent 会自动 OCR 并分类。",
-          action: `<button class="btn btn-primary" type="button" data-open-modal="syncModal" data-start-sync="true">同步邮箱账单</button>`,
+          hint: "连接 iPhone 后，支付完点一下快捷指令「记一笔」，Agent 会自动识别并分类。",
+          action: `<button class="btn btn-primary" type="button" data-open-modal="captureModal">记第一笔</button>`,
         });
     $("transactionList").innerHTML = `<tr><td colspan="5">${body}</td></tr>`;
     $("ledgerPagination").innerHTML = "";
@@ -4967,22 +4991,9 @@ async function copyLastAnswer() {
     return;
   }
 
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(answer);
-    } else {
-      const textarea = document.createElement("textarea");
-      textarea.value = answer;
-      textarea.setAttribute("readonly", "");
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      textarea.remove();
-    }
+  if (await copyText(answer)) {
     showToast("最近一条 CFO 回答已复制");
-  } catch {
+  } else {
     showToast("复制失败，请手动选择回答内容", "error");
   }
 }
@@ -5287,110 +5298,207 @@ async function submitQuestion(question, { scoped = true } = {}) {
   }
 }
 
-/* ------------------------------- 邮箱同步 ------------------------------- */
+/* ------------------------------- 记一笔（截图直传） ------------------------------- */
 
-function setSyncModalState(kind, title, meta) {
-  const card = $("syncStateCard");
-  card.className = `sync-state-card ${kind || ""}`.trim();
-  $("syncStatusLabel").textContent = kind === "running" ? "同步中" : kind === "success" ? "同步完成" : kind === "error" ? "同步失败" : "准备同步";
-  $("syncStatusTitle").textContent = title;
-  $("syncStatusMeta").textContent = meta;
-}
+const CAPTURE_SOURCE_LABELS = { shortcut_upload: "快捷指令", web_upload: "网页上传" };
 
-function renderSyncMetrics(payload = {}) {
-  $("syncCandidateCount").textContent = payload.candidate_count ?? "--";
-  $("syncMatchedCount").textContent = payload.matched_messages ?? "--";
-  $("syncAttachmentCount").textContent = payload.processed_attachments ?? "--";
-  $("syncNewCount").textContent = payload.new_transactions ?? "--";
-  $("syncCorrectionCount").textContent = payload.new_correction_count ?? "--";
-}
-
-function renderSyncItems(items = []) {
-  $("syncItemList").innerHTML = items.length
-    ? items
-        .map(
-          (item) => `
-          <button class="sync-item${item.analysis_eligible === false ? " needs-correction" : ""}" type="button" data-transaction-uid="${escapeHtml(item.transaction_uid || "")}" ${item.transaction_uid ? "" : "disabled"}>
-            <div>
-              <div class="sync-item-title">${escapeHtml(item.merchant || "未知商户")}</div>
-              <div class="sync-item-meta">${escapeHtml(item.paid_at ? displayDate(item.paid_at) : "交易时间待补")} · ${escapeHtml(item.transaction_uid || item.uid || "未生成交易号")}</div>
-            </div>
-            <div>
-              <div class="sync-item-amount">${Number(item.amount) > 0 ? escapeHtml(formatMoney(item.amount)) : "金额待补"}</div>
-              <div class="sync-item-category">${escapeHtml(item.analysis_eligible === false ? "待订正 · 打开处理" : "完整入账")}</div>
-            </div>
-          </button>
-        `,
-        )
-        .join("")
-    : emptyState({ icon: "mail", title: "本次没有新的账单附件", hint: "所有未读账单邮件都已经处理过了。" });
-}
-
-function resetSyncModal() {
-  setSyncModalState("idle", "等待开始", "将扫描未读账单邮件，成功处理后自动标记已读。");
-  renderSyncMetrics();
-  $("syncFinishedAt").textContent = "未开始";
-  $("syncItemList").innerHTML = emptyState({ icon: "mail", title: "还没有开始同步", hint: "点击下方「开始同步」连接邮箱。" });
-}
-
-async function syncMailData() {
-  if (state.syncBusy) return;
-  state.syncBusy = true;
-  $("startSyncButton").disabled = true;
-  $("openSyncModal").disabled = true;
-  $("startSyncButton").textContent = "同步中…";
-  setSyncModalState("running", "正在连接邮箱并扫描未读账单", "同步期间请保持当前 Web 服务运行。");
-  renderSyncMetrics({ candidate_count: "--", matched_messages: "--", processed_attachments: "--", new_transactions: "--", new_correction_count: "--" });
-  $("syncFinishedAt").textContent = "进行中";
-  $("syncItemList").innerHTML = `
-    <div class="empty-state">
-      <span class="skeleton skeleton-row" style="width:70%"></span>
-      <span class="skeleton skeleton-row" style="width:48%"></span>
-      <span>正在读取邮箱与 OCR 账单截图…</span>
-    </div>
-  `;
-
-  try {
-    const response = await fetch("./api/sync-mail", { method: "POST" });
-    const payload = await response.json();
-    if (!response.ok || !payload.ok) {
-      throw new Error(payload.answer || `同步请求失败：HTTP ${response.status}`);
-    }
-
-    await Promise.all([loadSnapshot(), reloadCategories()]);
-    renderAll();
-    if (!$("trendModal").hidden) renderTrendModal({ preserveSelection: true });
-    window.refreshCfoMotion?.();
-
-    renderSyncMetrics(payload);
-    renderSyncItems(payload.items || []);
-    $("syncFinishedAt").textContent = payload.finished_at ? displayDateTime(payload.finished_at) : "刚刚";
-    const title = payload.new_transactions > 0
-      ? payload.new_correction_count > 0
-        ? `已收录 ${payload.new_transactions} 笔，其中 ${payload.new_correction_count} 笔待订正`
-        : `已收录 ${payload.new_transactions} 笔新交易`
-      : "没有发现新的未读账单";
-    const meta = `扫描 ${payload.candidate_count} 封候选邮件，命中 ${payload.matched_messages} 封，处理 ${payload.processed_attachments} 个附件，用时 ${payload.duration_seconds}s。`;
-    setSyncModalState("success", title, meta);
-    acknowledgeAgentStatus();
-    if (payload.new_transactions > 0) {
-      showToast(payload.new_correction_count > 0
-        ? `已收录 ${payload.new_transactions} 笔，${payload.new_correction_count} 笔待订正`
-        : `同步完成，新增 ${payload.new_transactions} 笔交易`);
-    }
-    refreshPendingClassifications();
-  } catch (error) {
-    renderSyncMetrics({ candidate_count: 0, matched_messages: 0, processed_attachments: 0, new_transactions: 0, new_correction_count: 0 });
-    $("syncFinishedAt").textContent = "失败";
-    $("syncItemList").innerHTML = emptyState({ icon: "alert", title: "同步中断", hint: error.message });
-    setSyncModalState("error", "邮箱同步没有完成", error.message);
-    showToast("邮箱同步失败，详情见弹窗", "error");
-  } finally {
-    state.syncBusy = false;
-    $("startSyncButton").disabled = false;
-    $("openSyncModal").disabled = false;
-    $("startSyncButton").textContent = "重新同步";
+function renderPhoneLink(settings) {
+  const card = $("phoneLinkCard");
+  const status = settings?.token_status || {};
+  const active = Boolean(status.active);
+  card.className = `sync-state-card phone-link-card ${active ? "success" : ""}`.trim();
+  $("phoneLinkTitle").textContent = active ? `已连接 · 密钥尾号 ${status.last4}` : "还没有连接 iPhone";
+  let meta = "生成上传密钥、装好「记一笔」快捷指令，支付完点一下就能入账，不用再配邮箱。";
+  if (active) {
+    const last = settings.last_capture;
+    meta = last
+      ? `最近一次上传：${displayDateTime(last.created_at)} · ${last.message}`
+      : `密钥生成于 ${displayDateTime(status.created_at)}，还没有收到过截图。`;
   }
+  $("phoneLinkMeta").textContent = meta;
+
+  const token = settings?.token || "";
+  $("phoneLinkSecret").hidden = !token;
+  $("phoneLinkToken").textContent = token;
+  $("phoneLinkUrl").textContent = settings?.upload_url || "--";
+
+  const install = $("installShortcutLink");
+  install.hidden = !settings?.shortcut_url;
+  if (settings?.shortcut_url) install.href = settings.shortcut_url;
+  $("rotateUploadToken").textContent = active ? "重新生成密钥" : "生成上传密钥";
+  $("revokeUploadToken").hidden = !active;
+}
+
+function captureItemHtml(capture) {
+  const done = capture.status === "done";
+  const amount = Number(capture.amount) > 0 ? formatMoney(capture.amount) : "";
+  const title = done ? capture.merchant || "商户待补" : capture.message;
+  const statusText = {
+    done: capture.needs_correction ? "待订正 · 打开处理" : "完整入账",
+    failed: "识别失败",
+  }[capture.status] || "识别中…";
+  const meta = [displayDateTime(capture.created_at), CAPTURE_SOURCE_LABELS[capture.source] || ""].filter(Boolean).join(" · ");
+  const classes = ["sync-item"];
+  if (capture.needs_correction || capture.status === "failed") classes.push("needs-correction");
+  const uid = done && capture.transaction_uid ? capture.transaction_uid : "";
+  return `
+    <button class="${classes.join(" ")}" type="button" data-transaction-uid="${escapeHtml(uid)}" ${uid ? "" : "disabled"}>
+      <div>
+        <div class="sync-item-title">${escapeHtml(title)}</div>
+        <div class="sync-item-meta">${escapeHtml(meta)}</div>
+      </div>
+      <div>
+        <div class="sync-item-amount">${escapeHtml(done ? amount || "金额待补" : "")}</div>
+        <div class="sync-item-category">${escapeHtml(statusText)}</div>
+      </div>
+    </button>
+  `;
+}
+
+function renderCaptureItems(captures) {
+  $("captureListMeta").textContent = captures.length ? `最近 ${captures.length} 张` : "还没有";
+  $("captureItemList").innerHTML = captures.length
+    ? captures.map(captureItemHtml).join("")
+    : emptyState({ icon: "empty", title: "还没有上传过截图", hint: "连接 iPhone 后，支付完点一下「记一笔」，结果会出现在这里。" });
+}
+
+function setCaptureControlsDisabled(disabled) {
+  ["rotateUploadToken", "revokeUploadToken", "pickCaptureFiles", "copyUploadUrl"].forEach((id) => {
+    $(id).disabled = disabled;
+  });
+}
+
+async function loadCaptureModal() {
+  window.clearTimeout(state.capturePollTimer);
+  $("captureDemoNotice").hidden = !state.demo;
+  if (state.demo) {
+    setCaptureControlsDisabled(true);
+    renderPhoneLink(null);
+    $("phoneLinkTitle").textContent = "演示模式";
+    renderCaptureItems([]);
+    return;
+  }
+  setCaptureControlsDisabled(state.captureBusy);
+  try {
+    const [settings, recent] = await Promise.all([
+      categoryRequest("./api/v1/upload-token", { cache: "no-store" }),
+      categoryRequest("./api/v1/captures", { cache: "no-store" }),
+    ]);
+    // 刚生成的密钥只在生成那次的响应里，重新拉状态时别把它冲掉
+    renderPhoneLink({ ...settings, token: state.freshUploadToken || null });
+    renderCaptureItems(recent.captures || []);
+    const pending = (recent.captures || []).some((item) => item.status === "queued" || item.status === "processing");
+    if (pending && !$("captureModal").hidden) {
+      state.capturePollTimer = window.setTimeout(async () => {
+        await loadCaptureModal();
+        await reloadLedger();
+      }, 3000);
+    }
+  } catch (error) {
+    $("phoneLinkTitle").textContent = "连接状态读取失败";
+    $("phoneLinkMeta").textContent = error.message;
+  }
+}
+
+async function reloadLedger() {
+  await Promise.all([loadSnapshot(), reloadCategories()]);
+  renderAll();
+  if (!$("trendModal").hidden) renderTrendModal({ preserveSelection: true });
+  window.refreshCfoMotion?.();
+  acknowledgeAgentStatus();
+}
+
+async function rotateUploadToken() {
+  const active = !$("revokeUploadToken").hidden;
+  if (active && !window.confirm("重新生成后，手机上正在用的快捷指令会立刻失效，需要粘贴新密钥。继续吗？")) return;
+  try {
+    const settings = await categoryRequest("./api/v1/upload-token", { method: "POST" });
+    state.freshUploadToken = settings.token;
+    renderPhoneLink(settings);
+    showToast((await copyText(settings.token)) ? "新密钥已复制，去 iPhone 上粘贴吧" : "新密钥已生成，请手动复制");
+  } catch (error) {
+    showToast(`生成密钥失败：${error.message}`, "error");
+  }
+}
+
+async function revokeUploadToken() {
+  if (!window.confirm("停用后，手机上的快捷指令就传不上来了。确定停用吗？")) return;
+  try {
+    const settings = await categoryRequest("./api/v1/upload-token", { method: "DELETE" });
+    state.freshUploadToken = null;
+    renderPhoneLink(settings);
+    showToast("上传密钥已停用");
+  } catch (error) {
+    showToast(`停用失败：${error.message}`, "error");
+  }
+}
+
+async function uploadCaptureFiles(files) {
+  if (!files.length || state.captureBusy) return;
+  state.captureBusy = true;
+  setCaptureControlsDisabled(true);
+  $("pickCaptureFiles").textContent = `上传中 0/${files.length}`;
+  const tally = { done: 0, correction: 0, failed: 0, pending: 0 };
+  try {
+    for (const [index, file] of files.entries()) {
+      try {
+        const response = await fetch("./api/v1/captures", {
+          method: "POST",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: file,
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok && response.status !== 202) throw new Error(payload.message || `HTTP ${response.status}`);
+        if (payload.status === "done") tally[payload.needs_correction ? "correction" : "done"] += 1;
+        else tally.pending += 1;
+      } catch (error) {
+        tally.failed += 1;
+        showToast(`${file.name}：${error.message}`, "error");
+      }
+      $("pickCaptureFiles").textContent = `上传中 ${index + 1}/${files.length}`;
+    }
+    const parts = [];
+    if (tally.done) parts.push(`入账 ${tally.done} 笔`);
+    if (tally.correction) parts.push(`${tally.correction} 笔待订正`);
+    if (tally.pending) parts.push(`${tally.pending} 张识别中`);
+    if (parts.length) showToast(parts.join("，"));
+    await reloadLedger();
+    refreshPendingClassifications();
+  } finally {
+    state.captureBusy = false;
+    $("pickCaptureFiles").textContent = "上传截图";
+    setCaptureControlsDisabled(false);
+    await loadCaptureModal();
+  }
+}
+
+function wireCapture() {
+  $("openCaptureModal").addEventListener("click", () => openModal("captureModal"));
+  $("rotateUploadToken").addEventListener("click", rotateUploadToken);
+  $("revokeUploadToken").addEventListener("click", revokeUploadToken);
+  $("copyUploadToken").addEventListener("click", async () => {
+    showToast((await copyText($("phoneLinkToken").textContent)) ? "密钥已复制" : "复制失败，请长按选中后手动复制", "info");
+  });
+  $("copyUploadUrl").addEventListener("click", async () => {
+    showToast((await copyText($("phoneLinkUrl").textContent)) ? "上传地址已复制" : "复制失败，请手动复制", "info");
+  });
+  $("pickCaptureFiles").addEventListener("click", () => $("captureFileInput").click());
+  $("captureFileInput").addEventListener("change", (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    uploadCaptureFiles(files);
+  });
+  $("captureItemList").addEventListener("click", (event) => {
+    const transaction = event.target.closest("[data-transaction-uid]");
+    if (transaction?.dataset.transactionUid) openEvidence(transaction.dataset.transactionUid);
+  });
+
+  // 在手机上记完一笔、切回电脑上的网页时，顺手把账本刷新一下
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || !state.hasLoaded) return;
+    if (Date.now() - (state.snapshotLoadedAt || 0) < 15000) return;
+    reloadLedger().catch(() => {});
+  });
 }
 
 async function refreshPendingClassifications(maxAttempts = 10) {
@@ -5953,12 +6061,7 @@ function wireInteractions() {
   $("openBudgetSettings").addEventListener("click", () => openModal("budgetModal"));
   wireAccount();
 
-  $("openSyncModal").addEventListener("click", () => {
-    openModal("syncModal");
-    syncMailData();
-  });
-
-  $("startSyncButton").addEventListener("click", () => syncMailData());
+  wireCapture();
   $("clearChatButton").addEventListener("click", clearChatSession);
   $("expandChatButton").addEventListener("click", openChatExpanded);
   $("closeChatExpandButton").addEventListener("click", closeChatExpanded);
@@ -6249,7 +6352,6 @@ function wireInteractions() {
     const current = trigger.closest(".modal-backdrop");
     if (current && current.id !== target) closeModal(current.id);
     openModal(target);
-    if (trigger.dataset.startSync === "true") syncMailData();
   });
 
   $("trendModeControl").addEventListener("click", (event) => {
@@ -6665,11 +6767,6 @@ function wireInteractions() {
     if (transaction) openEvidence(transaction.dataset.transactionUid);
   });
 
-  $("syncItemList").addEventListener("click", (event) => {
-    const transaction = event.target.closest("[data-transaction-uid]");
-    if (transaction?.dataset.transactionUid) openEvidence(transaction.dataset.transactionUid);
-  });
-
   // 捕获阶段：#filterBar 自己的处理器会重建 innerHTML，冒泡时 target 已脱离文档，
   // closest("#filterBar") 就永远是 null 了。
   document.addEventListener(
@@ -6839,6 +6936,7 @@ async function loadSnapshot() {
     return bTime - aTime;
   });
   state.hasLoaded = true;
+  state.snapshotLoadedAt = Date.now();
 }
 
 /** 致命错误不再清空 body：保留外壳，只在主区域给一块可重试的说明。 */
@@ -6882,7 +6980,7 @@ async function boot() {
   });
   window.cfoDataReady = dataReady;
 
-  addMessage("agent", "账本已经同步好了，你可以来咨询任何一笔消费，尽管来问吧🤗");
+  addMessage("agent", "账本已经准备好了，你可以来咨询任何一笔消费，尽管来问吧🤗");
   wireInteractions();
   window.initCfoMotion?.();
   await dataReady;

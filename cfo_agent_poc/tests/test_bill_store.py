@@ -196,6 +196,22 @@ class MerchantAndItemExtractionTests(unittest.TestCase):
         self.assertEqual(parsed.merchant, "张小明")
         self.assertEqual(parsed.category, "personal_transfer")
 
+    def test_wechat_qr_transfer_uses_transfer_number_as_transaction_id(self) -> None:
+        """扫个人收款码的账单写的是「转账单号」：认出来才能按单号去重，
+        同一笔截两次不会记成两笔；支付方式也不该把后面的转账时间、单号吞进去。"""
+        parsed = parse_bill_text(
+            "扫二维码付款-给示例便利店\n-21.00\n当前状态\n支付成功\n收款方备注\n二维码收款\n"
+            "支付方式\n零钱\n转账时间\n2026年6月25日 12:58:58\n"
+            "转账单号\n100010730120260625010662871315\n09\n账单服务",
+            source_hint="wechat",
+        )
+
+        self.assertEqual(parsed.transaction_id, "10001073012026062501066287131509")
+        self.assertEqual(parsed.transaction_uid, "wechat_txn_10001073012026062501066287131509")
+        self.assertEqual(parsed.payment_method, "零钱")
+        self.assertEqual(parsed.paid_at, "2026-06-25T12:58:58")
+        self.assertEqual(parsed.amount, 21.0)
+
     def test_amount_labels_are_never_chosen_as_merchant(self) -> None:
         parsed = parse_bill_text(
             "账单详情\nPockyt Shop\n-135.57\n交易成功\n订单金额\n135.57元（20.00美元）\n支付时间\n2026-06-18 23:23:48",

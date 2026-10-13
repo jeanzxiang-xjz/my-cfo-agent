@@ -36,6 +36,8 @@ MAX_PASSWORD_LENGTH = 128
 MAX_DISPLAY_NAME_LENGTH = 20
 EMAIL_PATTERN = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
 BUDGET_KEYS = ("day", "week", "month")
+# 上传密钥带固定前缀：一眼能认出是什么，也方便在日志、截图里被扫描出来及时吊销
+UPLOAD_TOKEN_PREFIX = "cfo_up_"
 
 # scrypt 参数：n=2^14, r=8 约占 16MB 内存、几十毫秒，足够拖慢离线爆破
 SCRYPT_N, SCRYPT_R, SCRYPT_P, SCRYPT_DKLEN = 2**14, 8, 1, 32
@@ -194,6 +196,15 @@ class AccountStore:
                 used_by text references users(id) on delete set null,
                 used_at text
             );
+            create table if not exists upload_tokens (
+                token_hash text primary key,
+                user_id text not null references users(id) on delete cascade,
+                last4 text not null,
+                created_at text not null,
+                last_used_at text,
+                revoked_at text
+            );
+            create index if not exists upload_tokens_user on upload_tokens(user_id);
             create table if not exists user_settings (
                 user_id text primary key references users(id) on delete cascade,
                 budgets_json text,
@@ -427,6 +438,77 @@ class AccountStore:
         finally:
             conn.close()
 
+    # ------------------------------------------------------------ 上传密钥
+
+    def rotate_upload_token(self, user_id: str) -> dict:
+        """生成新的上传密钥并作废旧的。明文只在这里返回一次，库里只存哈希。"""
+        raw = UPLOAD_TOKEN_PREFIX + secrets.token_urlsafe(24)
+        now = _iso(_now())
+        conn = self.connect()
+        try:
+            conn.execute("begin immediate")
+            try:
+                conn.execute(
+                    "update upload_tokens set revoked_at = ? where user_id = ? and revoked_at is null", (now, user_id)
+                )
+                conn.execute(
+                    "insert into upload_tokens (token_hash, user_id, last4, created_at) values (?, ?, ?, ?)",
+                    (_token_hash(raw), user_id, raw[-4:], now),
+                )
+                conn.execute("commit")
+            except BaseException:
+                conn.execute("rollback")
+                raise
+        finally:
+            conn.close()
+        return {"token": raw, **self.upload_token_status(user_id)}
+
+    def revoke_upload_tokens(self, user_id: str) -> None:
+        conn = self.connect()
+        try:
+            conn.execute(
+                "update upload_tokens set revoked_at = ? where user_id = ? and revoked_at is null",
+                (_iso(_now()), user_id),
+            )
+        finally:
+            conn.close()
+
+    def upload_token_status(self, user_id: str) -> dict:
+        conn = self.connect()
+        try:
+            row = conn.execute(
+                """
+                select last4, created_at, last_used_at from upload_tokens
+                where user_id = ? and revoked_at is null order by created_at desc limit 1
+                """,
+                (user_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            return {"active": False}
+        return {"active": True, "last4": row["last4"], "created_at": row["created_at"], "last_used_at": row["last_used_at"]}
+
+    def upload_token_user(self, raw: str | None) -> dict | None:
+        """凭上传密钥找到账户。这把钥匙只能往账本里送截图，不能读任何数据。"""
+        if not raw or not raw.startswith(UPLOAD_TOKEN_PREFIX):
+            return None
+        token_hash = _token_hash(raw)
+        conn = self.connect()
+        try:
+            row = conn.execute(
+                """
+                select users.* from upload_tokens join users on users.id = upload_tokens.user_id
+                where upload_tokens.token_hash = ? and upload_tokens.revoked_at is null and users.status = 'active'
+                """,
+                (token_hash,),
+            ).fetchone()
+            if row is not None:
+                conn.execute("update upload_tokens set last_used_at = ? where token_hash = ?", (_iso(_now()), token_hash))
+        finally:
+            conn.close()
+        return self._public(row)
+
     # -------------------------------------------------------------- 邀请码
 
     def create_invite(self, created_by: str | None, *, days: int = INVITE_DAYS) -> dict:
@@ -503,7 +585,10 @@ class AccountStore:
 
 
 class LoginThrottle:
-    """同一 IP 或同一邮箱短时间内连续输错太多次就先挡一会儿。单进程内存计数即可。"""
+    """滑动窗口计数：某个 key 在窗口内累计到上限就先挡一会儿。单进程内存计数即可。
+
+    登录用它数失败次数（同一 IP / 邮箱连续输错），上传用它数请求次数（同一账户刷太快）。
+    """
 
     def __init__(self, max_failures: int = 10, window_seconds: int = 15 * 60) -> None:
         self.max_failures = max_failures

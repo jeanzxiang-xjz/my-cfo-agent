@@ -60,7 +60,8 @@ LOGIN_THROTTLE = LoginThrottle()
 # 而参数里带着用户的查询内容，不该在别人跑这个项目时默认刷屏。
 DEBUG_TRACE = os.environ.get("CFO_DEBUG") == "1"
 
-from mail_sync import DEFAULT_SUBJECT, connect_imap, process_mailbox_once_detailed, safe_logout
+import capture_queue
+from capture_queue import CaptureRejected, CaptureWorker
 from bill_store import capture_overrides, ensure_bill_tables, remember_merchant_alias
 from classification_service import settle_stuck_transactions, start_background_enrichment
 from custom_prompts import (
@@ -93,8 +94,18 @@ DEEPSEEK_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "high")
 CHAT_TIMEOUT_SECONDS = float(os.environ.get("CFO_CHAT_TIMEOUT_SECONDS", "45"))
 PROFILE_REPORT_TIMEOUT_SECONDS = float(os.environ.get("CFO_PROFILE_REPORT_TIMEOUT_SECONDS", "90"))
 MAX_CONTEXT_TRANSACTIONS = 40
-SYNC_TIMEOUT_SECONDS = float(os.environ.get("CFO_MAIL_SYNC_TIMEOUT_SECONDS", "90"))
-SYNC_MAX_CANDIDATES = int(os.environ.get("CFO_MAIL_SYNC_MAX_CANDIDATES", "20"))
+# 截图直传：上传体积上限、请求里同步等识别结果的最长时间、后台识别并发数
+MAX_UPLOAD_BYTES = int(os.environ.get("CFO_MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))
+# 被拒的上传最多读掉这么多再回话，好让手机收到提示；再大就直接断开
+UPLOAD_DRAIN_LIMIT = 2 * MAX_UPLOAD_BYTES
+CAPTURE_WAIT_SECONDS = float(os.environ.get("CFO_CAPTURE_WAIT_SECONDS", "8"))
+CAPTURE_CONCURRENCY = int(os.environ.get("CFO_CAPTURE_CONCURRENCY", "2"))
+# 对外访问地址，写进快捷指令的上传地址就从这里来；留空则按请求的 Host 推断
+PUBLIC_BASE_URL = os.environ.get("CFO_PUBLIC_BASE_URL", "").strip().rstrip("/")
+# 「记一笔」快捷指令的 iCloud 分享链接，配置后账户页会给出一键安装入口
+SHORTCUT_INSTALL_URL = os.environ.get("CFO_SHORTCUT_URL", "").strip()
+# 同一账户 10 分钟内最多上传 60 张，防止快捷指令被误设成循环或密钥泄露后被刷
+UPLOAD_LIMIT = LoginThrottle(max_failures=60, window_seconds=600)
 AUTH_COOKIE_NAME = "cfo_session"
 SESSION_MAX_AGE_SECONDS = 30 * 24 * 3600
 MAX_REQUEST_BODY_BYTES = int(os.environ.get("CFO_MAX_REQUEST_BODY_BYTES", "12000"))
@@ -2004,6 +2015,17 @@ def _safe_related_ocr_path(image_path: str | None) -> Path | None:
     return resolved if resolved.is_file() else None
 
 
+def _has_table(conn: sqlite3.Connection, name: str) -> bool:
+    return conn.execute("select 1 from sqlite_master where type = 'table' and name = ?", (name,)).fetchone() is not None
+
+
+def _image_still_referenced(conn: sqlite3.Connection, image_path: str, has_jobs: bool) -> bool:
+    """旧邮件链路里一张图可能对应多条捕获，还有别的记录在用就留着文件。"""
+    if conn.execute("select 1 from raw_bill_captures where image_path = ? limit 1", (image_path,)).fetchone():
+        return True
+    return has_jobs and conn.execute("select 1 from capture_jobs where image_path = ? limit 1", (image_path,)).fetchone() is not None
+
+
 def delete_transaction(transaction_uid: str) -> dict:
     if DEMO_MODE:
         return {"ok": False, "code": "demo_readonly", "answer": "演示模式下账本是只读的，不能删除交易。"}
@@ -2026,20 +2048,44 @@ def delete_transaction(transaction_uid: str) -> dict:
         if row is None:
             return {"ok": False, "code": "not_found", "answer": "找不到这笔交易。"}
 
-        capture_hash = row["raw_capture_hash"]
-        image_path = row["image_path"]
+        # 同一笔交易可能被截过好几次：每次上传都有自己的截图、OCR 原文和上传记录，
+        # 交易行只指向最新那张。删交易时把这几份一起清掉，「记一笔」里也就不再列出它们。
+        captures = {row["raw_capture_hash"]: row["image_path"]} if row["raw_capture_hash"] else {}
+        has_jobs = _has_table(conn, "capture_jobs")
+        job_images = (
+            [job["image_path"] for job in conn.execute(
+                "select image_path from capture_jobs where transaction_uid = ?", (transaction_uid,)
+            )]
+            if has_jobs
+            else []
+        )
+        for job_image in job_images:
+            for capture in conn.execute(
+                "select capture_hash, image_path from raw_bill_captures where image_path = ?", (job_image,)
+            ):
+                captures[capture["capture_hash"]] = capture["image_path"]
+
         conn.execute("delete from transactions where transaction_uid = ?", (transaction_uid,))
-        capture_is_orphaned = bool(capture_hash) and not conn.execute(
-            "select 1 from transactions where raw_capture_hash = ? limit 1", (capture_hash,)
-        ).fetchone()
-        if capture_is_orphaned:
+        if has_jobs:
+            conn.execute("delete from capture_jobs where transaction_uid = ?", (transaction_uid,))
+        orphaned = [
+            capture_hash
+            for capture_hash in captures
+            if not conn.execute("select 1 from transactions where raw_capture_hash = ? limit 1", (capture_hash,)).fetchone()
+        ]
+        for capture_hash in orphaned:
+            conn.execute("delete from transaction_overrides where raw_capture_hash = ?", (capture_hash,))
+            conn.execute("delete from raw_bill_captures where capture_hash = ?", (capture_hash,))
+        images = {captures[capture_hash] for capture_hash in orphaned} | set(job_images)
+        for image_path in sorted(path for path in images if path):
+            if _image_still_referenced(conn, image_path, has_jobs):
+                continue
             # 先删本地工件；若文件系统拒绝操作，数据库事务不会提交，记录仍可追溯。
             for artifact in (_safe_capture_image_path(image_path), _safe_related_ocr_path(image_path)):
                 if artifact is not None:
                     artifact.unlink()
                     deleted_files.append(str(artifact))
-            conn.execute("delete from transaction_overrides where raw_capture_hash = ?", (capture_hash,))
-            conn.execute("delete from raw_bill_captures where capture_hash = ?", (capture_hash,))
+        capture_is_orphaned = bool(orphaned)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -2130,76 +2176,83 @@ def trigger_background_classification() -> bool:
     )
 
 
-def sync_mail_once() -> dict:
-    host = os.environ.get("CFO_MAIL_IMAP_HOST", "imap.qq.com")
-    user = os.environ.get("CFO_MAIL_USER")
-    password = os.environ.get("CFO_MAIL_PASSWORD")
-    mailbox = os.environ.get("CFO_MAIL_MAILBOX", "INBOX")
-    subject = os.environ.get("CFO_MAIL_SUBJECT", DEFAULT_SUBJECT)
-    max_candidates = SYNC_MAX_CANDIDATES
+_CAPTURE_WORKER: CaptureWorker | None = None
+_CAPTURE_WORKER_LOCK = threading.Lock()
 
-    if not user or not password:
-        return {
-            "ok": False,
-            "code": "missing_mail_credentials",
-            "answer": "邮箱同步缺少配置。请在 cfo_agent_poc/.env 中设置 CFO_MAIL_USER 和 CFO_MAIL_PASSWORD。",
-        }
 
-    started_at = datetime.now()
-    before_payload = build_payload()
-    before_uids = {tx.get("transaction_uid") for tx in before_payload.get("transactions", [])}
-    before_count = len(before_uids)
-    client = None
-    try:
-        client = connect_imap(host, user, password, mailbox, timeout=SYNC_TIMEOUT_SECONDS)
-        detail = process_mailbox_once_detailed(
-            client,
-            subject=subject,
-            mark_seen=True,
-            include_seen=False,
-            max_candidates=max_candidates,
-            ledger=current_ledger(),
-        )
-    finally:
-        safe_logout(client)
+def _classify_after_capture(ledger: Ledger) -> None:
+    with use_ledger(ledger):
+        trigger_background_classification()
 
-    after_payload = build_payload()
-    after_transactions = after_payload.get("transactions", [])
-    after_by_uid = {tx.get("transaction_uid"): tx for tx in after_transactions}
-    new_transactions = [tx for tx in after_transactions if tx.get("transaction_uid") not in before_uids]
-    annotated_items = []
-    for item in detail["items"][-12:]:
-        stored = after_by_uid.get(item.get("transaction_uid"), item)
-        missing = stored.get("correction_fields") or correction_fields(stored)
-        annotated_items.append({
-            **item,
-            "correction_fields": missing,
-            "analysis_eligible": not missing,
-        })
-    after_count = len(after_transactions)
-    classification_started = trigger_background_classification()
-    finished_at = datetime.now()
-    return {
-        "ok": True,
-        "started_at": started_at.isoformat(timespec="seconds"),
-        "finished_at": finished_at.isoformat(timespec="seconds"),
-        "duration_seconds": round((finished_at - started_at).total_seconds(), 2),
-        "host": host,
-        "mailbox": mailbox,
-        "subject": subject,
-        "max_candidates": max_candidates,
-        "candidate_count": detail["candidate_count"],
-        "matched_messages": detail["matched_messages"],
-        "processed_attachments": detail["processed_attachments"],
-        "transactions_before": before_count,
-        "transactions_after": after_count,
-        "new_transactions": len(new_transactions),
-        "new_correction_count": sum(1 for tx in new_transactions if not tx.get("analysis_eligible", True)),
-        "correction_pending_count": after_payload.get("correction_pending_count", 0),
-        "classification_started": classification_started,
-        "items": annotated_items,
-        "generated_at": datetime.now().isoformat(timespec="seconds"),
+
+def capture_worker() -> CaptureWorker:
+    global _CAPTURE_WORKER
+    with _CAPTURE_WORKER_LOCK:
+        if _CAPTURE_WORKER is None:
+            _CAPTURE_WORKER = CaptureWorker(CAPTURE_CONCURRENCY, on_stored=_classify_after_capture)
+        return _CAPTURE_WORKER
+
+
+CORRECTION_LABELS = {"amount": "金额", "paid_at": "支付时间", "merchant": "商户"}
+
+
+def describe_capture_job(job: dict, *, duplicate: bool = False) -> dict:
+    """把任务整理成快捷指令和网页都能直接用的结果；message 会被快捷指令原样弹成通知。"""
+    status = job.get("status") or "queued"
+    payload = {
+        "ok": status != "failed",
+        "status": status,
+        "duplicate": duplicate,
+        "job_id": job.get("id"),
+        "source": job.get("source"),
+        "created_at": job.get("created_at"),
+        "transaction_uid": job.get("transaction_uid"),
+        "amount": job.get("amount"),
+        "merchant": job.get("merchant"),
+        "paid_at": job.get("paid_at"),
+        "needs_correction": False,
+        "missing_fields": [],
     }
+    if status == "done":
+        missing = correction_fields(job)
+        payload["needs_correction"] = bool(missing)
+        payload["missing_fields"] = missing
+        amount = job.get("amount")
+        if missing:
+            labels = "、".join(CORRECTION_LABELS[field] for field in missing)
+            message = f"已收到，但{labels}没认出来，请到网页里补全"
+        else:
+            message = f"已记账 ¥{float(amount):.2f} · {job.get('merchant')}"
+            if duplicate:
+                message = f"这张截图记过了：¥{float(amount):.2f} · {job.get('merchant')}"
+    elif status == "failed":
+        message = f"识别失败：{job.get('error') or '未知错误'}"
+    else:
+        message = "已收到，正在识别，稍后在网页里查看"
+    payload["message"] = message
+    return payload
+
+
+def extract_upload_image(content_type: str, body: bytes) -> bytes:
+    """快捷指令「获取 URL 内容」两种发法都接：表单（multipart）或直接把文件当请求体。"""
+    if content_type.lower().startswith("multipart/form-data"):
+        from email import policy
+        from email.parser import BytesParser
+
+        message = BytesParser(policy=policy.HTTP).parsebytes(
+            f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("latin-1", errors="replace") + body
+        )
+        parts = [part for part in message.iter_parts() if not part.is_multipart()] if message.is_multipart() else []
+        # 优先取带文件名的那一段；快捷指令的字段名用户可能随手改，不按字段名找
+        parts.sort(key=lambda part: part.get_filename() is None)
+        for part in parts:
+            data = part.get_payload(decode=True) or b""
+            if data:
+                return data
+        raise CaptureRejected("表单里没有找到截图文件。", code="missing_image")
+    if not body:
+        raise CaptureRejected("请求里没有截图。", code="missing_image")
+    return body
 
 
 class CFORequestHandler(SimpleHTTPRequestHandler):
@@ -2207,14 +2260,28 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(FRONTEND_DIR), **kwargs)
 
     user: dict | None = None
+    via_upload_token = False
 
     def session_token(self) -> str | None:
         return parse_cookies(self.headers.get("Cookie")).get(AUTH_COOKIE_NAME)
 
+    def bearer_token(self) -> str | None:
+        header = self.headers.get("Authorization", "")
+        if header[:7].lower() != "bearer ":
+            return None
+        return header[7:].strip() or None
+
     def request_ledger(self) -> Ledger | None:
         if DEMO_MODE:
             return DEMO_LEDGER
-        self.user = ACCOUNTS.session_user(self.session_token())
+        self.via_upload_token = False
+        bearer = self.bearer_token()
+        if bearer and self.command == "POST" and urlparse(self.path).path == "/api/v1/captures":
+            # 上传密钥只在这一个接口上认，拿着它访问别的接口一律当未登录
+            self.user = ACCOUNTS.upload_token_user(bearer)
+            self.via_upload_token = self.user is not None
+        else:
+            self.user = ACCOUNTS.session_user(self.session_token())
         return ACCOUNTS.ledger_for(self.user) if self.user else None
 
     def dispatch_with_ledger(self, route) -> None:
@@ -2351,6 +2418,99 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
             },
         }
 
+    def discard_request_body(self, length: int) -> None:
+        """拒绝上传前先把请求体读完再回话：iPhone 还在发截图时连接被掐断，
+        快捷指令只会报「网络连接已中断」，看不到我们给的提示。太大的就不读了，直接断开。"""
+        if length <= 0 or length > UPLOAD_DRAIN_LIMIT:
+            # 没读的请求体留在连接里会污染下一个请求
+            self.close_connection = True
+            return
+        remaining = length
+        while remaining > 0:
+            chunk = self.rfile.read(min(remaining, 64 * 1024))
+            if not chunk:
+                self.close_connection = True
+                return
+            remaining -= len(chunk)
+
+    def handle_capture_upload(self) -> None:
+        if DEMO_MODE:
+            self.send_json({"ok": False, "code": "demo_readonly", "message": "演示模式不能上传截图。"}, status=HTTPStatus.FORBIDDEN)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if self.user is None:
+            self.discard_request_body(length)
+            self.send_json(
+                {"ok": False, "code": "unauthorized", "message": "上传密钥无效或已失效，请在网页「记一笔 → 连接 iPhone」里重新生成。"},
+                status=HTTPStatus.UNAUTHORIZED,
+            )
+            return
+        if not self.via_upload_token and self.is_cross_site_write():
+            self.discard_request_body(length)
+            self.send_json({"ok": False, "code": "cross_site", "message": "请求来源不受信任。"}, status=HTTPStatus.FORBIDDEN)
+            return
+        if length <= 0 or length > MAX_UPLOAD_BYTES:
+            self.discard_request_body(length)
+            too_big = length > MAX_UPLOAD_BYTES
+            self.send_json(
+                {
+                    "ok": False,
+                    "code": "payload_too_large" if too_big else "missing_image",
+                    "message": f"截图太大了（上限 {MAX_UPLOAD_BYTES // 1024 // 1024}MB）。" if too_big else "请求里没有截图。",
+                },
+                status=HTTPStatus.REQUEST_ENTITY_TOO_LARGE if too_big else HTTPStatus.BAD_REQUEST,
+            )
+            return
+        body = self.rfile.read(length)
+        limit_key = f"upload:{self.user['id']}"
+        if UPLOAD_LIMIT.blocked(limit_key):
+            self.send_json({"ok": False, "code": "rate_limited", "message": "上传太频繁了，请过几分钟再试。"}, status=HTTPStatus.TOO_MANY_REQUESTS)
+            return
+        UPLOAD_LIMIT.fail(limit_key)
+        ledger = current_ledger()
+        try:
+            image = extract_upload_image(self.headers.get("Content-Type", ""), body)
+            job, created = capture_queue.save_capture(
+                ledger, image, source="shortcut_upload" if self.via_upload_token else "web_upload"
+            )
+        except CaptureRejected as exc:
+            self.send_json({"ok": False, "code": exc.code, "message": str(exc)}, status=HTTPStatus(exc.status))
+            return
+        if job["status"] == "queued":
+            future = capture_worker().submit(ledger, job["id"])
+            try:
+                job = future.result(timeout=CAPTURE_WAIT_SECONDS)
+            except Exception:
+                # 超时：识别还在后台跑，先告诉手机「收到了」，结果去网页看
+                job = capture_queue.get_job(ledger, job["id"]) or job
+        payload = describe_capture_job(job, duplicate=not created)
+        status = HTTPStatus.ACCEPTED if job.get("status") in {"queued", "processing"} else HTTPStatus.OK
+        if job.get("status") == "failed":
+            status = HTTPStatus.UNPROCESSABLE_ENTITY
+        self.send_json(payload, status=status)
+
+    def public_base_url(self) -> str:
+        if PUBLIC_BASE_URL:
+            return PUBLIC_BASE_URL
+        proto = self.headers.get("X-Forwarded-Proto", "").split(",")[0].strip() or "http"
+        host = self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "localhost"
+        return f"{proto}://{host}"
+
+    def upload_settings_payload(self, token: str | None = None) -> dict:
+        status = ACCOUNTS.upload_token_status(self.user["id"])
+        jobs = capture_queue.recent_jobs(current_ledger(), limit=1)
+        return {
+            "ok": True,
+            "upload_url": f"{self.public_base_url()}/api/v1/captures",
+            "shortcut_url": SHORTCUT_INSTALL_URL or None,
+            "token": token,
+            "token_status": status,
+            "last_capture": describe_capture_job(jobs[0]) if jobs else None,
+        }
+
     def route_account_api(self, method: str, path: str) -> bool:
         """/api/v1/me、/api/v1/settings/*、/api/v1/invites。返回 True 表示已处理。"""
         if path == "/api/v1/me" and method == "GET":
@@ -2359,6 +2519,16 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
         if path == "/api/v1/settings/budgets" and method == "GET":
             budgets = None if DEMO_MODE else ACCOUNTS.get_budgets(self.user["id"])
             self.send_json({"ok": True, "budgets": budgets})
+            return True
+        if path == "/api/v1/upload-token" and method == "GET":
+            if DEMO_MODE:
+                self.send_json({"ok": False, "code": "demo_readonly", "answer": "演示模式不能连接 iPhone。"}, status=HTTPStatus.FORBIDDEN)
+            else:
+                self.send_json(self.upload_settings_payload())
+            return True
+        if path == "/api/v1/captures" and method == "GET":
+            jobs = [] if DEMO_MODE else capture_queue.recent_jobs(current_ledger())
+            self.send_json({"ok": True, "captures": [describe_capture_job(job) for job in jobs]})
             return True
         if path == "/api/v1/invites" and method == "GET":
             if DEMO_MODE or not self.user.get("is_admin"):
@@ -2388,6 +2558,12 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
             elif path == "/api/v1/settings/budgets" and method == "PUT":
                 budgets = ACCOUNTS.set_budgets(self.user["id"], self.read_json_body().get("budgets"))
                 self.send_json({"ok": True, "budgets": budgets})
+            elif path == "/api/v1/upload-token" and method == "POST":
+                token = ACCOUNTS.rotate_upload_token(self.user["id"])["token"]
+                self.send_json(self.upload_settings_payload(token), status=HTTPStatus.CREATED)
+            elif path == "/api/v1/upload-token" and method == "DELETE":
+                ACCOUNTS.revoke_upload_tokens(self.user["id"])
+                self.send_json(self.upload_settings_payload())
             elif path == "/api/v1/invites" and method == "POST":
                 if not self.user.get("is_admin"):
                     self.send_json({"ok": False, "code": "forbidden", "answer": "只有管理员能生成邀请码。"}, status=HTTPStatus.FORBIDDEN)
@@ -2550,6 +2726,10 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
                 self.handle_register()
             return
 
+        if path == "/api/v1/captures":
+            self.handle_capture_upload()
+            return
+
         if path == "/api/v1/logout":
             if not self.is_cross_site_write():
                 ACCOUNTS.revoke_session(self.session_token())
@@ -2586,16 +2766,6 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "answer": "请求格式不是合法 JSON。"}, status=HTTPStatus.BAD_REQUEST)
             except Exception as exc:
                 self.send_json({"ok": False, "answer": safe_error_message("新建常问失败", exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
-            return
-
-        if path == "/api/sync-mail":
-            # 邮箱配置是全进程共用的一个，多用户下谁点同步，别人的截图就会进谁的账本。
-            # 下一阶段改为快捷指令直传，邮件链路整体下线；这里先关掉。
-            self.send_json({
-                "ok": False,
-                "code": "mail_sync_retired",
-                "answer": "邮箱同步已停用，请改用快捷指令直接上传截图。",
-            }, status=HTTPStatus.GONE)
             return
 
         if path == "/api/transaction-edit":
@@ -2796,7 +2966,8 @@ def main() -> None:
     else:
         # 上次进程可能是在分类跑到一半时挂的，那些行会一直停在 pending。
         # 启动时把每个账本都收一次尾，保证界面上不会留着「识别中」。
-        for user in ACCOUNTS.list_users():
+        users = ACCOUNTS.list_users()
+        for user in users:
             ledger = ACCOUNTS.ledger_for(user)
             try:
                 ensure_ledger_schema(ledger)
@@ -2807,6 +2978,10 @@ def main() -> None:
                     trigger_background_classification()
             except Exception as exc:  # 单个账本出问题不该挡住启动
                 print(f"[CFO] {user['id']}：启动清扫跳过：{type(exc).__name__}")
+        # 上次没跑完的截图任务（图片已落盘）接着跑
+        resumed = capture_worker().resume(ACCOUNTS.ledger_for(user) for user in users)
+        if resumed:
+            print(f"[CFO] 续跑 {resumed} 个未完成的截图任务")
     server = ThreadingHTTPServer((args.host, args.port), CFORequestHandler)
     mode = "demo" if DEMO_MODE else f"{len(ACCOUNTS.list_users())} 个账户，数据目录 {ACCOUNTS.home}"
     print(f"Serving CFO web app at http://{args.host}:{args.port}/ （{mode}）")

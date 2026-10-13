@@ -397,7 +397,6 @@ kbd {
 .td-amount,
 .txn-amount,
 .pagination-summary,
-.sync-metrics strong,
 .budget-kpi strong,
 .budget-rest strong,
 .budget-usage-head strong,
@@ -8148,6 +8147,8 @@ svg.category-symbol {
 
 .sync-body {
   display: grid;
+  /* 内容比弹窗高时让整体滚动，而不是把 overflow:hidden 的状态卡压扁裁掉 */
+  grid-auto-rows: max-content;
   gap: var(--sp-5);
   padding: var(--sp-6);
   overflow-y: auto;
@@ -8270,30 +8271,79 @@ svg.category-symbol {
   }
 }
 
-.sync-metrics {
+/* 连接 iPhone：沿用状态卡的外观，里面放密钥、步骤、上传地址和操作 */
+.phone-link-card {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  overflow: hidden;
+  gap: 0;
 }
 
-.sync-metrics div {
+.phone-link-secret {
   display: grid;
-  gap: 7px;
-  padding: var(--sp-4);
-  background: var(--ink-1);
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-2) var(--sp-3);
+  align-items: center;
+  margin-top: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--jade-line);
+  border-radius: var(--r-md);
+  background: rgba(46, 158, 123, 0.08);
 }
 
-.sync-metrics div + div {
-  border-left: 1px solid var(--line);
+.phone-link-secret[hidden] {
+  display: none;
 }
 
-.sync-metrics strong {
+.phone-link-secret code {
   color: var(--text-strong);
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  line-height: 1;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.phone-link-secret p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.phone-link-steps {
+  display: grid;
+  gap: 4px;
+  margin: var(--sp-4) 0 0;
+  padding-left: 1.4em;
+  color: var(--text);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+
+.phone-link-url {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--sp-2);
+  margin-top: var(--sp-3);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.phone-link-url code {
+  min-width: 0;
+  color: var(--text);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+.phone-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+
+.phone-link-actions .btn[hidden] {
+  display: none;
 }
 
 .sync-item-list {
@@ -8965,23 +9015,6 @@ svg.category-symbol {
   .profile-wellbeing-signals {
     padding-left: 0;
     border-top: 1px solid var(--line);
-    border-left: 0;
-  }
-
-  .sync-metrics {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .sync-metrics div:nth-child(odd) {
-    border-left: 0;
-  }
-
-  .sync-metrics div:nth-child(n + 3) {
-    border-top: 1px solid var(--line);
-  }
-
-  .sync-metrics div:last-child {
-    grid-column: 1 / -1;
     border-left: 0;
   }
 

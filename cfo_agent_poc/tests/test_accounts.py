@@ -136,8 +136,16 @@ class Browser:
         self.session: str | None = None
         self.opener = urllib.request.build_opener(NoRedirect)
 
-    def request(self, method: str, path: str, *, form: dict | None = None, data: dict | None = None, headers: dict | None = None):
-        body = None
+    def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        form: dict | None = None,
+        data: dict | None = None,
+        headers: dict | None = None,
+        body: bytes | None = None,
+    ):
         merged = dict(headers or {})
         if form is not None:
             body = urllib.parse.urlencode(form).encode()
@@ -167,7 +175,9 @@ class Browser:
         return status, json.loads(raw or b"{}")
 
 
-class AccountHttpTests(unittest.TestCase):
+class LiveServerCase(unittest.TestCase):
+    """起一个真实服务端（临时平台目录、非演示模式），供 HTTP 用例继承。本身不含用例。"""
+
     def setUp(self) -> None:
         temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)
@@ -205,6 +215,8 @@ class AccountHttpTests(unittest.TestCase):
         self.assertIsNotNone(browser.session)
         return browser
 
+
+class AccountHttpTests(LiveServerCase):
     def test_empty_install_sends_visitors_to_register(self) -> None:
         status, headers, _ = self.browser().request("GET", "/")
         self.assertEqual(status, 303)
@@ -312,12 +324,6 @@ class AccountHttpTests(unittest.TestCase):
             browser.request("POST", "/api/v1/login", form={"email": "alice@example.com", "password": "wrong-pass"})
         status, _, _ = browser.request("POST", "/api/v1/login", form={"email": "alice@example.com", "password": "password1"})
         self.assertEqual(status, 429)
-
-    def test_mail_sync_is_retired(self) -> None:
-        alice = self.register("alice@example.com")
-        status, payload = alice.json("POST", "/api/sync-mail")
-        self.assertEqual(status, 410)
-        self.assertEqual(payload["code"], "mail_sync_retired")
 
 
 if __name__ == "__main__":

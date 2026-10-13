@@ -35,7 +35,7 @@ ROW_TOLERANCE_RATIO = 0.01
 
 
 class OCRError(RuntimeError):
-    """OCR 失败。消息会被 /api/sync-mail 直接透出到前端，所以写成人话。"""
+    """OCR 失败。消息会经截图上传接口透出到快捷指令通知和网页，所以写成人话。"""
 
 
 def _provider_name() -> str:
@@ -87,7 +87,7 @@ _client: Any = None
 
 
 def _aliyun_client() -> Any:
-    """懒加载单例。mail_sync 是在循环里逐张调用的，没必要每张图重建 client。"""
+    """懒加载单例。截图是一张张陆续上传的，没必要每张图重建 client。"""
     global _client
     if _client is not None:
         return _client

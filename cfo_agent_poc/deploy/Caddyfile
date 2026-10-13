@@ -1,0 +1,17 @@
+# Caddy 反向代理：统一域名 + 自动申请 HTTPS 证书。
+# 把 cfo.example.com 换成你的域名（DNS 先指到这台服务器），然后：
+#   sudo cp cfo_agent_poc/deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+# 应用本身只监听 127.0.0.1:8091，不直接暴露到公网。
+
+cfo.example.com {
+	encode gzip
+
+	# 截图上传上限，和 .env 的 CFO_MAX_UPLOAD_BYTES（默认 15MB）对齐，留一点余量
+	request_body {
+		max_size 16MB
+	}
+
+	# Caddy 默认会带上原始 Host 和 X-Forwarded-For / X-Forwarded-Proto，
+	# 应用靠它们判断 HTTPS（给会话 cookie 加 Secure）、校验写请求来源、做登录限流。
+	reverse_proxy 127.0.0.1:8091
+}

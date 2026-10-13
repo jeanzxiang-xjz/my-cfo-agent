@@ -86,6 +86,8 @@ FIELD_LABELS = [
     "支付方式",
     "订单号",
     "交易单号",
+    "转账时间",
+    "转账单号",
     "商家订单号",
     "商户单号",
     "经营单号",
@@ -96,6 +98,9 @@ FIELD_LABELS = [
     "交易服务",
 ]
 
+
+# 微信扫个人收款码付的钱，账单上写的是「转账单号」
+TRANSACTION_ID_LABELS = ["交易单号", "订单号", "转账单号"]
 
 PLATFORM_HINTS = ["美团", "京东", "淘宝", "天猫", "拼多多", "饿了么", "抖音", "小红书"]
 CATEGORY_RULES = [(category, thing, list(hints)) for category, thing, hints in LOCAL_CATEGORY_RULES]
@@ -1003,7 +1008,7 @@ def build_parse_warnings(parsed: dict[str, Any], merchant_warnings: list[str], t
         if parsed.get(field) is None:
             warnings.append(f"missing_{field}")
 
-    transaction_raw = first_field(text, ["交易单号", "订单号"])
+    transaction_raw = first_field(text, TRANSACTION_ID_LABELS)
     if parsed.get("transaction_id") is None:
         warnings.append("invalid_transaction_id" if transaction_raw else "missing_transaction_id")
 
@@ -1137,7 +1142,7 @@ def parse_bill_text(text: str, source: str = "ios_shortcut", source_hint: str | 
         "card_last4": card_last4,
         "acquirer": extract_field(text, "收单机构"),
         "clearing_org": extract_field(text, "清算机构"),
-        "transaction_id": normalize_order_id(first_field(text, ["交易单号", "订单号"])),
+        "transaction_id": normalize_order_id(first_field(text, TRANSACTION_ID_LABELS)),
         "merchant_order_id": normalize_order_id(first_field(text, ["商户单号", "商家订单号", "经营单号"])),
     }
 
