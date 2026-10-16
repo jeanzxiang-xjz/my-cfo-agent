@@ -1,4 +1,5 @@
 import openingImage from "../assets/opening-cfo-illustration.webp";
+import { ownerName } from "./owner.js";
 
 // 首屏静态骨架。所有 id / data-* 属性都是 legacy-controller.js 的渲染契约，
 // 改名前请同步检查 src/legacy-controller.js。
@@ -18,11 +19,40 @@ function AppLoadingScreen() {
   );
 }
 
+// 大字标第一行默认是「Jeanz」（等宽字体约 3em 宽）。换成用户称呼后按宽度等比缩小，
+// 汉字按 1em、其余按 0.6em 估宽；缩到下限还放不下就截断加省略号。
+const OPENING_NAME_FIT_EM = 3.6;
+const OPENING_NAME_MIN_SCALE = 0.36;
+const CJK_CHAR = /[⺀-鿿豈-﫿＀-￯]/;
+
+function openingName() {
+  const name = ownerName() || "Jeanz";
+  const maxWidth = OPENING_NAME_FIT_EM / OPENING_NAME_MIN_SCALE;
+  let text = "";
+  let width = 0;
+  for (const char of name) {
+    const charWidth = CJK_CHAR.test(char) ? 1 : 0.6;
+    if (width + charWidth > maxWidth) {
+      text += "…";
+      width += 0.6;
+      break;
+    }
+    text += char;
+    width += charWidth;
+  }
+  return {
+    text,
+    cjk: CJK_CHAR.test(text),
+    scale: Math.max(OPENING_NAME_MIN_SCALE, Math.min(1, OPENING_NAME_FIT_EM / width)),
+  };
+}
+
 /**
- * 开场页：左侧品牌字幕、右侧线稿插画取景框。
+ * 开场页：左侧字标（称呼 + CFO）、右侧线稿插画取景框。
  * 可点击 / Esc 跳过，一次会话只播一次，数据就绪或 1.2s 超时后收起。
  */
 function OpeningOverlay() {
+  const name = openingName();
   return (
     <div className="opening-overlay" role="presentation">
       <div className="opening-frame">
@@ -32,7 +62,9 @@ function OpeningOverlay() {
             <p className="opening-kicker">PRIVATE CASHFLOW INTELLIGENCE</p>
             <div className="opening-title">
               <span>
-                <i>Jeanz</i>
+                <i className={name.cjk ? "opening-name is-cjk" : "opening-name"} style={{ fontSize: `${name.scale}em` }}>
+                  {name.text}
+                </i>
               </span>
               <span>
                 <i>CFO</i>

@@ -307,6 +307,22 @@ class AccountHttpTests(LiveServerCase):
         with server.use_ledger(self.store.ledger_for(user)):
             self.assertIn("小爱", server.load_system_prompt())
 
+    def test_home_page_carries_display_name_for_opening(self) -> None:
+        alice = self.register("alice@example.com")
+        status, headers, page = alice.request("GET", "/")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers["Content-Type"])
+        self.assertIn(b'<meta name="cfo-owner" content="alice" />', page)
+
+        # 称呼是用户自己填的：写进页面前必须转义，不能变成可执行的标签
+        alice.json("PATCH", "/api/v1/me", {"display_name": '"><script>x</script>'})
+        page = alice.request("GET", "/index.html")[2].decode()
+        self.assertIn('content="&quot;&gt;&lt;script&gt;x&lt;/script&gt;"', page)
+        self.assertNotIn("<script>x</script>", page)
+
+        bob = self.register("bob@example.com", self.store.create_invite(None)["code"])
+        self.assertIn(b'content="bob"', bob.request("GET", "/")[2], "每个人拿到的是自己的称呼")
+
     def test_cross_site_writes_are_rejected(self) -> None:
         alice = self.register("alice@example.com")
         status, payload = alice.json(

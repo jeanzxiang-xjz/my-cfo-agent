@@ -714,6 +714,18 @@ body.motion-complete .opening-overlay {
   color: var(--jade-8);
 }
 
+/* 称呼一行：不换行；字号由 App.jsx 按长度给出缩放比例 */
+.opening-name {
+  white-space: nowrap;
+}
+
+/* 等宽字体没有汉字字形，中文称呼换成系统黑体，收一点字重和字距更贴近英文字标的分量 */
+.opening-name.is-cjk {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 /* 主宣传语：中文正文字，靠字距而非字号取得分量，压在字标与发丝线之间 */
 .opening-tagline {
   color: var(--ink-11);

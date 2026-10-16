@@ -2711,7 +2711,24 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND)
             return
 
+        if path in {"/", "/index.html"}:
+            self.send_index_page()
+            return
+
         super().do_GET()
+
+    def send_index_page(self) -> None:
+        """首页带上当前账户的称呼，开场页第一帧就能显示，不用等接口。
+        称呼是验证登录时顺手查出来的，不多查库；首页是 no-store，不会串到别人那里。"""
+        page = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
+        owner = "" if DEMO_MODE else str((self.user or {}).get("display_name") or "")
+        meta = f'<meta name="cfo-owner" content="{html.escape(owner, quote=True)}" />'
+        body = page.replace("</head>", f"    {meta}\n  </head>", 1).encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def route_POST(self) -> None:
         path = urlparse(self.path).path

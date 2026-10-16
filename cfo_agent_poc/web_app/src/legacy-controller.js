@@ -2895,6 +2895,17 @@ function legacyCopyText(text) {
   }
 }
 
+// 服务端返回首页时把当前账户的称呼写进 <meta name="cfo-owner">（App.jsx 的开场页读同一处）。
+// 注意：这个文件不能加 import——一旦变成带 import 的模块，打包会改用另一种方式包裹
+// vendor/gsap.min.js，浏览器里直接报错白屏。
+function ownerMeta() {
+  return document.querySelector('meta[name="cfo-owner"]');
+}
+
+function ownerName() {
+  return ownerMeta()?.content.trim() || "";
+}
+
 function wireAccount() {
   $("openAccountModal").addEventListener("click", () => openModal("accountModal"));
 
@@ -2907,6 +2918,7 @@ function wireAccount() {
         body: JSON.stringify({ display_name: $("accountDisplayNameInput").value }),
       });
       state.account = payload.user;
+      if (ownerMeta()) ownerMeta().content = payload.user.display_name || "";
       showToast("称呼已更新");
     } catch (error) {
       setFormError("accountProfileError", error.message);
@@ -6980,7 +6992,8 @@ async function boot() {
   });
   window.cfoDataReady = dataReady;
 
-  addMessage("agent", "账本已经准备好了，你可以来咨询任何一笔消费，尽管来问吧🤗");
+  const owner = ownerName();
+  addMessage("agent", `${owner ? `${owner}，` : ""}账本已经准备好了，你可以来咨询任何一笔消费，尽管来问吧🤗`);
   wireInteractions();
   window.initCfoMotion?.();
   await dataReady;
