@@ -2984,13 +2984,23 @@ body.chat-expanded-open {
   height: 100%;
   min-width: 3px;
   background: var(--seg-color, var(--ink-6));
-  transition: opacity var(--motion-data) var(--ease-out);
+  transition:
+    opacity var(--motion-data) var(--ease-out),
+    filter var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out);
+}
+
+/* 下方分类行悬停时，这里对应的一段跟着提亮；选中的分类那一段常亮；其余段保持原样 */
+.composition-seg.is-linked,
+.composition-seg.is-selected {
+  filter: brightness(1.25) saturate(1.1);
+  box-shadow: inset 0 0 0 1.5px var(--text-strong);
 }
 
 .composition-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px var(--sp-4);
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -3015,6 +3025,29 @@ body.chat-expanded-open {
 .composition-legend b {
   color: var(--text-strong);
   font-weight: 600;
+}
+
+/* 每项都预留胶囊的内边距（项间距由它撑开，ul 不再加列间距）：选中时只换底色和描边，排布不动，
+   胶囊也始终落在内容列以内，不会探出构成条的左边缘 */
+.composition-legend > li {
+  padding: 4px 9px;
+  border-radius: var(--r-full);
+  transition:
+    color var(--dur-2) var(--ease-out),
+    background-color var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out);
+}
+
+.composition-legend > li.is-linked {
+  color: var(--text-strong);
+}
+
+/* 选中的分类在图例里套一枚中性胶囊：抬一级底色加细描边，文字提亮加粗，一眼可辨又不和下方的荧光边框抢 */
+.composition-legend > li.is-selected {
+  color: var(--text-strong);
+  font-weight: 600;
+  background: var(--surface-hover);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 
 /* — 两栏分析 — */
@@ -3176,18 +3209,70 @@ body.chat-expanded-open {
 
 /* — 场景权重：条形排行 — */
 .category-stack {
+  --category-row-pad: 10px;
   display: grid;
-  gap: var(--sp-3);
+  gap: 2px;
   max-height: 380px;
   overflow-y: auto;
+  /* 行自带内边距和边框，整体向外让出同样宽度，文字仍和上方构成条左右对齐 */
+  margin-inline: calc(-1 * var(--category-row-pad));
   padding-right: 4px;
 }
 
+/* 每行都是去账本的入口：边框常驻但透明，悬停只换颜色，列表不会因此抖动 */
 .category-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 4px var(--sp-3);
   align-items: baseline;
+  width: 100%;
+  padding: var(--sp-2) var(--category-row-pad);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-2) var(--ease-out),
+    background-color var(--dur-2) var(--ease-out);
+}
+
+.category-row:focus-visible {
+  border-color: var(--line-strong);
+  border-radius: var(--r-md);
+}
+
+/* 选中态和上方图例的胶囊同一套语言：抬一级底色加细描边，不靠荧光色；悬停只有描边，选中才有底色 */
+.category-row.is-selected {
+  border-color: var(--line-strong);
+  background: var(--surface-hover);
+}
+
+.category-row.is-selected .category-name,
+.category-row.is-selected .category-value {
+  color: var(--text-strong);
+}
+
+.category-row.is-selected .category-name strong {
+  font-weight: 650;
+}
+
+.category-row.is-selected .category-track {
+  height: 6px;
+  /* 默认轨道色和选中底色同为 ink-4，会糊成一片；压深一级，未填满的那截才看得出来 */
+  background: var(--ink-2);
+}
+
+.category-row.is-selected .category-track > span {
+  filter: brightness(1.2) saturate(1.1);
+}
+
+/* 选中后笔数和占比在抬起的底色上用默认的暗灰会糊掉，提亮加粗，和右侧的 › 连成一线 */
+.category-row.is-selected .category-sub {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .category-name {
@@ -3217,6 +3302,7 @@ body.chat-expanded-open {
 .category-track {
   grid-column: 1 / -1;
   height: 4px;
+  transition: height var(--dur-2) var(--ease-out);
   border-radius: var(--r-full);
   background: var(--ink-4);
   overflow: hidden;
@@ -3234,9 +3320,81 @@ body.chat-expanded-open {
 }
 
 .category-sub {
-  grid-column: 1 / -1;
+  grid-column: 1;
   color: var(--muted-dim);
   font-size: var(--fs-micro);
+}
+
+/* 右下角的去向提示：平时只有一个灰色 ›，悬停才说清楚点下去会发生什么 */
+.category-jump {
+  grid-column: 2;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 4px;
+  color: var(--muted-dim);
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+}
+
+.category-jump-chevron {
+  font-size: var(--fs-sm);
+  line-height: 1;
+  transition: color var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out);
+}
+
+.category-jump-copy {
+  display: none;
+  animation: category-jump-in var(--dur-2) var(--ease-out);
+}
+
+.category-row.is-selected .category-jump {
+  color: var(--text-strong);
+}
+
+@keyframes category-jump-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+}
+
+@media (hover: hover) {
+  .category-row:hover {
+    border-color: var(--line-strong);
+  }
+
+  .category-row.is-selected:hover {
+    border-color: var(--line-strong);
+  }
+
+  .category-row:hover .category-jump {
+    color: var(--text);
+  }
+
+  .category-row.is-selected:hover .category-jump {
+    color: var(--text-strong);
+  }
+
+  .category-row:hover:not(.is-selected) .category-jump-copy.is-go,
+  .category-row.is-selected:hover .category-jump-copy.is-cancel {
+    display: inline;
+  }
+
+  .category-row:hover:not(.is-selected) .category-jump-chevron {
+    transform: translateX(2px);
+  }
+}
+
+.category-row:focus-visible:not(.is-selected) .category-jump-copy.is-go,
+.category-row.is-selected:focus-visible .category-jump-copy.is-cancel {
+  display: inline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .category-jump-copy {
+    animation: none;
+  }
 }
 
 /* ============================== 账本 ============================== */

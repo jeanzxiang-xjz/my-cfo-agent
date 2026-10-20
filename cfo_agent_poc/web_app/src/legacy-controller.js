@@ -164,6 +164,9 @@ let state = {
   filter: "all",
   merchantFocus: "",
   ledgerFilterExpanded: false,
+  // 分类是从筛选栏以外选中的（支出去向、分析卡片、更多分类弹层）时，把它的胶囊临时提到「全部」后面：
+  // 窄屏上筛选栏横向滚动，排在后面的胶囊会落在屏幕外，用户既看不到选中了谁，也没法再点一下取消。
+  ledgerFilterPromoted: false,
   ledgerPage: 1,
   ledgerAmountSort: "date",
   chatHistory: [],
@@ -4251,6 +4254,10 @@ function askFromProfileReport() {
   }, prefersReducedMotion() ? 20 : 280);
 }
 
+// 构成条只画前几名，其余并成一段；分类列表悬停时要按同一规则找到自己落在哪一段。
+const COMPOSITION_TOP_COUNT = 6;
+const COMPOSITION_REST_KEY = "__rest";
+
 function renderComposition() {
   const selected = scopedTransactions(state.period);
   const grouped = groupByCategory(selected);
@@ -4270,22 +4277,24 @@ function renderComposition() {
   }
   $("coreNodes").classList.add("has-data");
 
-  const top = entries.slice(0, 6);
-  const restAmount = entries.slice(6).reduce((acc, [, value]) => acc + value.amount, 0);
+  const top = entries.slice(0, COMPOSITION_TOP_COUNT);
+  const rest = entries.slice(COMPOSITION_TOP_COUNT);
+  const restAmount = rest.reduce((acc, [, value]) => acc + value.amount, 0);
   const segments = top.map(([key, value]) => ({
     key,
     label: categoryLabel(key),
     amount: value.amount,
     color: categoryColor(key),
   }));
-  if (restAmount > 0) segments.push({ key: "__rest", label: "其他", amount: restAmount, color: "var(--cat-8)" });
+  // 长尾合计叫「其余 N 类」而不是「其他」：「未分类」可以被改名成「其他」，同色又同名就分不清了。
+  if (restAmount > 0) segments.push({ key: COMPOSITION_REST_KEY, label: `其余 ${rest.length} 类`, amount: restAmount, color: "var(--cat-8)" });
 
   $("coreNodes").innerHTML = `
     <div class="composition-bar" role="img" aria-label="${escapeHtml(segments.map((seg) => `${seg.label} ${Math.round((seg.amount / total) * 100)}%`).join("，"))}">
       ${segments
         .map(
           (seg) =>
-            `<span class="composition-seg" style="--segment-weight:${seg.amount.toFixed(2)};--seg-color:${seg.color}"></span>`,
+            `<span class="composition-seg" data-seg-key="${escapeHtml(seg.key)}" style="--segment-weight:${seg.amount.toFixed(2)};--seg-color:${seg.color}"></span>`,
         )
         .join("")}
     </div>
@@ -4293,7 +4302,7 @@ function renderComposition() {
       ${segments
         .map(
           (seg) => `
-            <li>
+            <li data-seg-key="${escapeHtml(seg.key)}">
               <span class="legend-dot" style="--seg-color:${seg.color}" aria-hidden="true"></span>
               ${escapeHtml(seg.label)}
               <b>${Math.round((seg.amount / total) * 100)}%</b>
@@ -4644,6 +4653,7 @@ function renderDecisionFeed() {
  */
 function focusLedger({ category = "all", merchant = "" } = {}) {
   state.filter = category || "all";
+  state.ledgerFilterPromoted = true;
   state.merchantFocus = merchant || "";
   state.ledgerFilterExpanded = false;
   state.ledgerPage = 1;
@@ -4694,22 +4704,52 @@ function renderCategoryStack() {
 
   $("categoryStack").innerHTML = entries.length
     ? entries
-        .map(([category, value]) => {
+        .map(([category, value], index) => {
           const share = total > 0 ? (value.amount / total) * 100 : 0;
+          const label = categoryLabel(category);
+          const selected = state.filter === category;
+          const segKey = index < COMPOSITION_TOP_COUNT ? category : COMPOSITION_REST_KEY;
           return `
-            <div class="category-row">
-              <div class="category-name">
+            <button class="category-row${selected ? " is-selected" : ""}" type="button" data-category-jump="${escapeHtml(category)}" data-seg-key="${escapeHtml(segKey)}" aria-pressed="${selected}" aria-label="${escapeHtml(`${label}，${value.count} 笔，${formatMoney(value.amount)}`)}">
+              <span class="category-name">
                 <span class="legend-dot" style="--seg-color:${categoryColor(category)}" aria-hidden="true"></span>
-                <strong>${escapeHtml(categoryLabel(category))}</strong>
-              </div>
-              <div class="category-value">${escapeHtml(formatMoney(value.amount))}</div>
-              <div class="category-track" aria-hidden="true"><span style="--category-ratio:${(clamp(share, 0, 100) / 100).toFixed(4)};--seg-color:${categoryColor(category)}"></span></div>
-              <div class="category-sub">${value.count} 笔 · 占 ${Math.round(share)}%</div>
-            </div>
+                <strong>${escapeHtml(label)}</strong>
+              </span>
+              <span class="category-value">${escapeHtml(formatMoney(value.amount))}</span>
+              <span class="category-track" aria-hidden="true"><span style="--category-ratio:${(clamp(share, 0, 100) / 100).toFixed(4)};--seg-color:${categoryColor(category)}"></span></span>
+              <span class="category-sub">${value.count} 笔 · 占 ${Math.round(share)}%</span>
+              <span class="category-jump" aria-hidden="true">
+                <span class="category-jump-copy is-go">看这 ${value.count} 笔</span>
+                <span class="category-jump-copy is-cancel">取消筛选</span>
+                <span class="category-jump-chevron">›</span>
+              </span>
+            </button>
           `;
         })
         .join("")
     : ""; // 空态已经由上方的构成条给出，这里不再重复一遍
+}
+
+/** 支出去向的选中态不单独存：它就是账本当前的分类筛选，账本那边一改这里跟着变。 */
+function syncCategoryStackSelection() {
+  let selectedSegKey = "";
+  document.querySelectorAll("#categoryStack [data-category-jump]").forEach((row) => {
+    const selected = state.filter === row.dataset.categoryJump;
+    row.classList.toggle("is-selected", selected);
+    row.setAttribute("aria-pressed", String(selected));
+    if (selected) selectedSegKey = row.dataset.segKey;
+  });
+  // 选中的分类在构成条上那一段常亮，和悬停的临时提亮分开记，鼠标移走也不丢。
+  document.querySelectorAll("#coreNodes [data-seg-key]").forEach((node) => {
+    node.classList.toggle("is-selected", Boolean(selectedSegKey) && node.dataset.segKey === selectedSegKey);
+  });
+}
+
+/** 悬停或聚焦某个分类时，点亮构成条上它所在的那一段（长尾分类点亮「其余 N 类」）。 */
+function highlightCompositionSegment(segKey = "") {
+  document.querySelectorAll("#coreNodes [data-seg-key]").forEach((node) => {
+    node.classList.toggle("is-linked", Boolean(segKey) && node.dataset.segKey === segKey);
+  });
 }
 
 function renderFilters() {
@@ -4726,6 +4766,7 @@ function renderFilters() {
   const disabledCategories = otherCategories.filter((category) => !categoryById(category)?.is_enabled);
   const enabledOtherCategories = otherCategories.filter((category) => categoryById(category)?.is_enabled);
   const selectedIsExtra = state.filter !== "all" && otherCategories.includes(state.filter);
+  const promoted = state.ledgerFilterPromoted && state.filter !== "all" ? state.filter : "";
 
   $("filterBar").innerHTML = `
     <div class="filter-strip">
@@ -4736,8 +4777,9 @@ function renderFilters() {
           </button>
         ` : ""}
         ${filterButton("all")}
-        ${primaryCategories.map((category) => filterButton(category)).join("")}
-        ${selectedIsExtra ? filterButton(state.filter, { current: true }) : ""}
+        ${promoted ? filterButton(promoted, { current: selectedIsExtra }) : ""}
+        ${primaryCategories.filter((category) => category !== promoted).map((category) => filterButton(category)).join("")}
+        ${selectedIsExtra && !promoted ? filterButton(state.filter, { current: true }) : ""}
       <button class="ledger-filter-more${state.ledgerFilterExpanded ? " active" : ""}" data-filter-action="toggle-more" type="button" aria-expanded="${state.ledgerFilterExpanded ? "true" : "false"}">
         更多分类 <span aria-hidden="true">${state.ledgerFilterExpanded ? "收起" : `+${otherCategories.length}`}</span>
       </button>
@@ -4772,6 +4814,9 @@ function renderFilters() {
         ` : ""}
       </div>
   `;
+  // 提前的胶囊紧挨着「全部」，筛选栏若之前被横向滚走，拉回起点它才在视野里。
+  if (promoted) $("filterBar").querySelector(".filter-strip-scroll")?.scrollTo({ left: 0 });
+  syncCategoryStackSelection();
 }
 
 function renderCorrectionQueue() {
@@ -6708,6 +6753,38 @@ function wireInteractions() {
     if (decisionAction === "ledger") focusLedger({ category, merchant });
   });
 
+  $("categoryStack").addEventListener("click", (event) => {
+    const row = event.target.closest("[data-category-jump]");
+    if (!row) return;
+    const category = row.dataset.categoryJump;
+    if (state.filter !== category) {
+      focusLedger({ category });
+      return;
+    }
+    // 再点已选中的那一行＝撤销这次筛选，人还留在原地，不再滚走。
+    state.filter = "all";
+    state.ledgerPage = 1;
+    renderFilters();
+    renderTransactions();
+    window.refreshCfoMotion?.({ scope: "ledger", quiet: true });
+  });
+
+  // 悬停联动只认真实指针和键盘聚焦。手机上一次轻点会补发模拟的 mouseover，按钮也会留着焦点，
+  // 却永远等不到 mouseleave：再点一次取消选中后，构成条那一段还会一直亮着。
+  const linkCompositionSegment = (event) => {
+    highlightCompositionSegment(event.target.closest("[data-category-jump]")?.dataset.segKey || "");
+  };
+  $("categoryStack").addEventListener("pointerover", (event) => {
+    if (event.pointerType !== "touch") linkCompositionSegment(event);
+  });
+  $("categoryStack").addEventListener("pointerleave", () => highlightCompositionSegment());
+  $("categoryStack").addEventListener("focusin", (event) => {
+    if (event.target.matches(":focus-visible")) linkCompositionSegment(event);
+  });
+  $("categoryStack").addEventListener("focusout", (event) => {
+    if (!$("categoryStack").contains(event.relatedTarget)) highlightCompositionSegment();
+  });
+
   $("filterBar").addEventListener("click", (event) => {
     const button = event.target.closest("button");
     if (!button) return;
@@ -6736,7 +6813,10 @@ function wireInteractions() {
     if (!button.dataset.filter) return;
     // 手动选分类＝重新划定范围，之前带过来的商户约束到此为止。
     state.merchantFocus = "";
-    state.filter = button.dataset.filter;
+    // 再点一次已选中的分类＝取消筛选，回到「全部」。
+    state.filter = button.dataset.filter === state.filter ? "all" : button.dataset.filter;
+    // 筛选栏里直接点的胶囊本来就在视野内，不挪位置；从弹层选的可能排在屏幕外，提到前面。
+    state.ledgerFilterPromoted = Boolean(button.closest(".filter-popover"));
     state.ledgerFilterExpanded = false;
     state.ledgerPage = 1;
     renderFilters();
