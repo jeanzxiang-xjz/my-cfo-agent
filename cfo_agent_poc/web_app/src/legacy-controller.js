@@ -6769,6 +6769,31 @@ function wireInteractions() {
     window.refreshCfoMotion?.({ scope: "ledger", quiet: true });
   });
 
+  // 手机上没有悬停：手指按住（包括按住拖动）时给这一行套上和选中同款的胶囊，松手即撤，
+  // 和首屏「现金流」被按住时的反馈一致。用 touch 事件而不是 pointer：一旦开始滚动，
+  // 浏览器会对 pointer 发 pointercancel，胶囊会在拖动中途消失。
+  const clearCategoryPress = () => {
+    document.querySelectorAll("#categoryStack .is-pressing").forEach((row) => row.classList.remove("is-pressing"));
+  };
+  $("categoryStack").addEventListener("touchstart", (event) => {
+    event.target.closest("[data-category-jump]")?.classList.add("is-pressing");
+  }, { passive: true });
+  $("categoryStack").addEventListener("touchend", clearCategoryPress, { passive: true });
+  $("categoryStack").addEventListener("touchcancel", clearCategoryPress, { passive: true });
+
+  // 支出去向有选中时，点页面上的空白处＝撤销选中（同时撤掉账本的分类筛选）。
+  // 控件、整块可追溯交易和弹窗都不算空白：人跳到账本后在里面点来点去，不能把刚筛好的结果弄丢。
+  // tabindex 只认可聚焦的：<main> 为了「跳到主要内容」带着 tabindex="-1"，算进来就整页都不是空白了。
+  document.addEventListener("click", (event) => {
+    if (!document.querySelector("#categoryStack .is-selected")) return;
+    if (event.target.closest('button, a, input, select, textarea, label, summary, [role="button"], [tabindex]:not([tabindex="-1"]), #ledger, .modal-backdrop')) return;
+    state.filter = "all";
+    state.ledgerPage = 1;
+    renderFilters();
+    renderTransactions();
+    window.refreshCfoMotion?.({ scope: "ledger", quiet: true });
+  });
+
   // 悬停联动只认真实指针和键盘聚焦。手机上一次轻点会补发模拟的 mouseover，按钮也会留着焦点，
   // 却永远等不到 mouseleave：再点一次取消选中后，构成条那一段还会一直亮着。
   const linkCompositionSegment = (event) => {

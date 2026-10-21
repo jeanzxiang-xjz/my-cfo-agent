@@ -3245,7 +3245,8 @@ body.chat-expanded-open {
 }
 
 /* 选中态和上方图例的胶囊同一套语言：抬一级底色加细描边，不靠荧光色；悬停只有描边，选中才有底色 */
-.category-row.is-selected {
+.category-row.is-selected,
+.category-row.is-pressing {
   border-color: var(--line-strong);
   background: var(--surface-hover);
 }
@@ -3261,7 +3262,11 @@ body.chat-expanded-open {
 
 .category-row.is-selected .category-track {
   height: 6px;
-  /* 默认轨道色和选中底色同为 ink-4，会糊成一片；压深一级，未填满的那截才看得出来 */
+}
+
+/* 默认轨道色和胶囊底色同为 ink-4，会糊成一片；压深一级，未填满的那截才看得出来 */
+.category-row.is-selected .category-track,
+.category-row.is-pressing .category-track {
   background: var(--ink-2);
 }
 
