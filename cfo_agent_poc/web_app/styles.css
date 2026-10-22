@@ -7053,43 +7053,22 @@ svg.category-symbol {
   }
 }
 
-/* 只读态金额：符号化前置——方向箭头 + 「− ¥10.00」。箭头左缘贴住标题那条竖线，和金额垂直居中；
-   方向只靠箭头的朝向和颜色说（支出珊瑚、收入绿），金额本身保持中性 */
+/* 只读态金额：「−¥40.00」/「+¥40.00」，正负号紧贴金额、左缘和标题对齐；
+   支出的「−」和数字同色，只有收入的「+」用荧光色 */
 .evidence-amount {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.evidence-amount-arrow {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.75;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.evidence-amount.is-outflow .evidence-amount-arrow {
-  color: var(--rose-8);
-}
-
-.evidence-amount.is-inflow .evidence-amount-arrow {
-  color: var(--jade-8);
-}
-
-.evidence-amount-value {
+  display: block;
   font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .evidence-amount-sign {
-  margin-right: 3px;
+  margin-right: 1px;
   font-weight: inherit;
+}
+
+.evidence-amount.is-inflow .evidence-amount-sign {
+  color: var(--accent);
 }
 
 .evidence-edit-form {

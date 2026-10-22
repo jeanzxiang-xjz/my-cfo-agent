@@ -1573,15 +1573,9 @@ function evidenceSourceLabel(value) {
   return labels[value] || value || "未记录";
 }
 
-/** 收支方向箭头：支出朝右下（出账），收入朝右上（进账）。线宽、圆头和界面里其它线性图标一致。 */
-const DIRECTION_ARROWS = {
-  outflow: '<path d="M2 2 10 10M10 4.5V10H4.5"/>',
-  inflow: '<path d="M2 10 10 2M4.5 2H10v5.5"/>',
-};
-
 /**
- * 只读态的金额格：符号化前置——一枚方向箭头 + 「− ¥10.00」，不写「支出/收入」二字，
- * 箭头的颜色就是方向（支出珊瑚、收入绿）。文字留给读屏：箭头 aria-hidden，旁边一段只给读屏的方向词。
+ * 只读态的金额格：只用正负号说方向——支出「−¥40.00」符号和数字同色，收入「+¥40.00」的「+」用荧光色。
+ * 符号对读屏不够明确，所以符号本身 aria-hidden，旁边留一段只给读屏的「支出/收入」。
  */
 function evidenceAmountField(tx, { edited = false } = {}) {
   if (!(Number(tx.amount) > 0)) return evidenceField("金额", null, { edited });
@@ -1591,9 +1585,8 @@ function evidenceAmountField(tx, { edited = false } = {}) {
     <div class="evidence-field${edited ? " is-edited" : ""}">
       <span>金额${mark}</span>
       <strong class="evidence-amount is-${direction}">
-        <svg class="evidence-amount-arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false">${DIRECTION_ARROWS[direction]}</svg>
         <span class="visually-hidden">${DIRECTION_LABELS[direction]}</span>
-        <span class="evidence-amount-value"><b class="evidence-amount-sign">${direction === "inflow" ? "+" : "−"}</b>${escapeHtml(formatMoney(tx.amount))}</span>
+        <b class="evidence-amount-sign" aria-hidden="true">${direction === "inflow" ? "+" : "−"}</b>${escapeHtml(formatMoney(tx.amount))}
       </strong>
     </div>
   `;
