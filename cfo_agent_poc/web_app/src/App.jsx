@@ -255,7 +255,11 @@ function OverviewHero() {
               用 stroke 才能保证柱宽和圆头在任何宽度下都不变形。
             */}
             <span className="hero-spark-chart" id="heroSparkChart" aria-hidden="true">
-              <svg className="spark-wave-svg" viewBox="0 0 140 46" preserveAspectRatio="none" focusable="false">
+              {/*
+                viewBox 横向从 0.89 取到 139.11：首末两根柱的外缘（中心 2.19 / 137.81，柱宽 2.6）。
+                柱阵正好铺满内容宽度，左右缘和上方「现金流」「查看趋势 ›」对齐，不再往里缩一截。
+              */}
+              <svg className="spark-wave-svg" viewBox="0.89 0 138.22 46" preserveAspectRatio="none" focusable="false">
                 <defs>
                   <linearGradient id="sparkWaveStroke" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="140" y2="0">
                     <stop className="spark-wave-stop-dim" offset="0" />
@@ -297,7 +301,7 @@ function OverviewHero() {
                   <line x1="133.44" y1="45" x2="133.44" y2="20.15" />
                   <line x1="137.81" y1="45" x2="137.81" y2="20.66" />
                 </g>
-                <line className="spark-wave-base" x1="0" y1="45.5" x2="140" y2="45.5" />
+                <line className="spark-wave-base" x1="0.89" y1="45.5" x2="139.11" y2="45.5" />
               </svg>
             </span>
           </span>

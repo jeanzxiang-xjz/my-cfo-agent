@@ -471,6 +471,10 @@ def apply_capture_overrides(parsed: ParsedBill, overrides: dict[str, str | None]
         except (TypeError, ValueError):
             pass
 
+    # 方向不进 OVERRIDABLE_TEXT_FIELDS：那里空值会写成 None，而 direction 列不允许为空。
+    if overrides.get("direction") in ("outflow", "inflow"):
+        parsed.direction = overrides["direction"]
+
 
 def apply_persisted_classification(
     conn: sqlite3.Connection,

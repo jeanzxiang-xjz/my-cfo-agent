@@ -1519,15 +1519,21 @@ body.is-scrolled .rail {
 }
 
 /* — 迷你趋势 — */
+/* 现金流是能点进趋势的入口，平时就带外框，让人一眼看出这是个可点的模块；
+   外框和「全部」周期下的画像卡同一套：细描边 + 压深一级的底，左右缘和上方内容对齐 */
 .hero-spark {
   display: grid;
-  grid-template-rows: auto auto;
+  /* 迷你趋势和画像卡二选一，同一时间只有一个子元素可见：只留一行、不设行距。
+     原先的两行 + 12px 行距会在空的第二行前留下一道行距，压在底部，下边距比上边距多出 12px。 */
+  grid-template-rows: auto;
   align-content: end;
-  gap: var(--sp-3);
-  padding: var(--sp-4);
-  margin: 0 calc(-1 * var(--sp-2)) calc(-1 * var(--sp-2));
-  border: 1px solid transparent;
+  gap: 0;
+  /* 和画像卡同为 20px，切换周期时两种形态的留白一致 */
+  padding: var(--sp-5);
+  margin: 0;
+  border: 1px solid var(--line);
   border-radius: var(--r-lg);
+  background: var(--ink-1);
   text-align: left;
   transition: background var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out);
 }
@@ -1541,7 +1547,7 @@ body.is-scrolled .rail {
 }
 
 .hero-spark:hover {
-  border-color: var(--line);
+  border-color: var(--line-strong);
   background: var(--ink-3);
 }
 
@@ -3307,7 +3313,6 @@ body.chat-expanded-open {
 .category-track {
   grid-column: 1 / -1;
   height: 4px;
-  transition: height var(--dur-2) var(--ease-out);
   border-radius: var(--r-full);
   background: var(--ink-4);
   overflow: hidden;
@@ -6812,7 +6817,8 @@ svg.category-symbol {
   background: var(--ink-3);
 }
 
-.evidence-field span {
+/* 只管字段标题（格子里第一个 span）：写成后代选择器会波及金额组、分段、符号这些 span，平白多出 8px 间距 */
+.evidence-field > span:first-child {
   color: var(--muted-dim);
   font-size: var(--fs-micro);
 }
@@ -6826,22 +6832,35 @@ svg.category-symbol {
 
 /* ---------------------- 解析字段的人工校正 ---------------------- */
 
-.evidence-field span {
+/* 标题行：字段名靠左，「已校正」靠右，行高固定——有没有标记，左右两格的标题和数值都齐平 */
+.evidence-field > span:first-child {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--sp-2);
 }
 
+/* 「已校正」是轻量标记：一个绿点 + 小字，字号行高跟标题一致，不占额外高度 */
 .evidence-edited {
-  padding: 1px 5px;
-  border-radius: 999px;
-  background: var(--jade-bg);
-  color: var(--jade-9);
-  font-size: var(--fs-micro);
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: inherit;
   font-style: normal;
-  line-height: 1.5;
+  line-height: inherit;
 }
 
+.evidence-edited::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--jade-8);
+}
+
+/* 校正过的格子左侧一条 2px 绿竖线，扫一眼就能找到改过哪些字段；用内阴影画，不挤动内容和左边线 */
 .evidence-field.is-edited {
   box-shadow: inset 2px 0 0 var(--jade-8);
 }
@@ -6874,6 +6893,203 @@ svg.category-symbol {
 .evidence-grid.is-editing select:focus-visible {
   border-color: var(--jade-8);
   outline: none;
+}
+
+/* — 金额格：「支出/收入」分段 + 带符号的金额，共用一个外框 —
+   结构是「嵌入式轨道 + 金额」：左侧铺一层浅底当附加区，两个选项等宽，选中滑块在两者间滑动；
+   右侧符号和数字连成一个金额（金融数字字体、等宽数字）。整组字号统一，主次只靠字重和颜色。
+   颜色只留给收入的「+¥」：和账本里收入金额同一个绿，其余保持中性。 */
+.amount-field {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--ink-1);
+  transition: border-color var(--dur-2) var(--ease-out);
+}
+
+/* 鼠标点分段不亮框，键盘切方向或在金额里输入时才亮，和其它输入框的聚焦反馈一致 */
+.amount-field:has(:focus-visible) {
+  border-color: var(--jade-8);
+}
+
+.amount-direction {
+  position: relative;
+  display: grid;
+  flex: none;
+  grid-template-columns: 1fr 1fr;
+  padding: 2px;
+  border-right: 1px solid var(--line);
+  border-radius: calc(var(--r-sm) - 1px) 0 0 calc(var(--r-sm) - 1px);
+  background: var(--ink-2);
+}
+
+/* 选中滑块：一块，跟着选中项左右滑；圆角按外框同心收（6 - 1 边框 - 2 内边距） */
+.amount-direction::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc((100% - 4px) / 2);
+  border-radius: calc(var(--r-sm) - 3px);
+  background: var(--ink-5);
+  box-shadow: var(--shadow-1), var(--edge);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+
+.amount-direction:has(input[value="inflow"]:checked)::before {
+  transform: translateX(100%);
+}
+
+.amount-direction-option {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  cursor: pointer;
+}
+
+/* radio 只留语义和键盘操作，外观交给后面的 span；选择器要压过 .evidence-grid.is-editing input */
+.evidence-grid.is-editing .amount-direction-option input {
+  position: absolute;
+  width: 1px;
+  min-width: 0;
+  height: 1px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.amount-direction-option span {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 0 10px;
+  border-radius: calc(var(--r-sm) - 3px);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  transition: color var(--dur-2) var(--ease-out);
+}
+
+.amount-direction-option:hover span {
+  color: var(--text);
+}
+
+.amount-direction-option input:checked + span {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.amount-direction-option input:focus-visible + span {
+  box-shadow: inset 0 0 0 1px var(--jade-8);
+}
+
+.amount-input {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+  padding-left: 10px;
+}
+
+.amount-sign {
+  flex: none;
+  color: var(--muted);
+  font-family: var(--font-data);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition: color var(--dur-2) var(--ease-out);
+}
+
+.amount-sign::before {
+  content: "−¥";
+}
+
+.amount-field:has(input[value="inflow"]:checked) .amount-sign {
+  color: var(--jade-8);
+}
+
+.amount-field:has(input[value="inflow"]:checked) .amount-sign::before {
+  content: "+¥";
+}
+
+/* 金额输入框融进外框：去掉自己的边框、底色和步进箭头，紧贴符号成一个金额 */
+.evidence-grid.is-editing .amount-input input {
+  flex: 1;
+  min-height: 0;
+  padding: 0 10px 0 2px;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.evidence-grid.is-editing .amount-input input::-webkit-inner-spin-button,
+.evidence-grid.is-editing .amount-input input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+/* 全局 :focus-visible 会再套一圈焦点环，和外框的聚焦色叠成两层框 */
+.evidence-grid.is-editing .amount-input input:focus-visible {
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .amount-direction::before {
+    transition: none;
+  }
+}
+
+/* 只读态金额：符号化前置——方向箭头 + 「− ¥10.00」。箭头左缘贴住标题那条竖线，和金额垂直居中；
+   方向只靠箭头的朝向和颜色说（支出珊瑚、收入绿），金额本身保持中性 */
+.evidence-amount {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.evidence-amount-arrow {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.evidence-amount.is-outflow .evidence-amount-arrow {
+  color: var(--rose-8);
+}
+
+.evidence-amount.is-inflow .evidence-amount-arrow {
+  color: var(--jade-8);
+}
+
+.evidence-amount-value {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.evidence-amount-sign {
+  margin-right: 3px;
+  font-weight: inherit;
 }
 
 .evidence-edit-form {

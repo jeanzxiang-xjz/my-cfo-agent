@@ -1573,6 +1573,32 @@ function evidenceSourceLabel(value) {
   return labels[value] || value || "未记录";
 }
 
+/** 收支方向箭头：支出朝右下（出账），收入朝右上（进账）。线宽、圆头和界面里其它线性图标一致。 */
+const DIRECTION_ARROWS = {
+  outflow: '<path d="M2 2 10 10M10 4.5V10H4.5"/>',
+  inflow: '<path d="M2 10 10 2M4.5 2H10v5.5"/>',
+};
+
+/**
+ * 只读态的金额格：符号化前置——一枚方向箭头 + 「− ¥10.00」，不写「支出/收入」二字，
+ * 箭头的颜色就是方向（支出珊瑚、收入绿）。文字留给读屏：箭头 aria-hidden，旁边一段只给读屏的方向词。
+ */
+function evidenceAmountField(tx, { edited = false } = {}) {
+  if (!(Number(tx.amount) > 0)) return evidenceField("金额", null, { edited });
+  const direction = tx.direction === "inflow" ? "inflow" : "outflow";
+  const mark = edited ? `<em class="evidence-edited" title="这个字段被人工校正过">已校正</em>` : "";
+  return `
+    <div class="evidence-field${edited ? " is-edited" : ""}">
+      <span>金额${mark}</span>
+      <strong class="evidence-amount is-${direction}">
+        <svg class="evidence-amount-arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false">${DIRECTION_ARROWS[direction]}</svg>
+        <span class="visually-hidden">${DIRECTION_LABELS[direction]}</span>
+        <span class="evidence-amount-value"><b class="evidence-amount-sign">${direction === "inflow" ? "+" : "−"}</b>${escapeHtml(formatMoney(tx.amount))}</span>
+      </strong>
+    </div>
+  `;
+}
+
 function evidenceField(label, value, { edited = false } = {}) {
   const mark = edited ? `<em class="evidence-edited" title="这个字段被人工校正过">已校正</em>` : "";
   return `<div class="evidence-field${edited ? " is-edited" : ""}"><span>${escapeHtml(label)}${mark}</span><strong>${escapeHtml(value ?? "未识别")}</strong></div>`;
@@ -1583,6 +1609,8 @@ function evidenceField(label, value, { edited = false } = {}) {
 /** 与后端 EDITABLE_FIELDS 一一对应；改这里必须同步改 server.py。 */
 const EVIDENCE_EDIT_FIELDS = [
   { name: "amount", label: "金额", type: "number", attrs: 'step="0.01" min="0.01" inputmode="decimal" required' },
+  // 收支方向不单独占一格，嵌在金额那一格里（amountDirectionControl）；留在这张表里是为了随表单一起提交、存草稿。
+  { name: "direction", label: "收支方向", type: "direction", embedded: true },
   // step=1 保留秒：不带秒的话，光打开再保存就会把秒抹成 00，被记成一次「校正」。
   { name: "paid_at", label: "交易时间", type: "datetime-local", attrs: 'step="1" required' },
   { name: "merchant", label: "商户", type: "text", attrs: 'maxlength="60" placeholder="未识别"' },
@@ -1605,6 +1633,7 @@ function toLocalInputValue(value) {
 function evidenceFieldDraftValue(field, tx) {
   const draft = state.evidenceDraftFields;
   if (draft && field.name in draft) return draft[field.name];
+  if (field.name === "direction") return tx.direction === "inflow" ? "inflow" : "outflow";
   return field.name === "paid_at" ? toLocalInputValue(tx.paid_at) : (tx[field.name] ?? "");
 }
 
@@ -1619,6 +1648,39 @@ function evidenceEditControl(field, tx) {
   }
   const value = evidenceFieldDraftValue(field, tx);
   return `<input id="${id}" name="${field.name}" type="${field.type}" value="${escapeHtml(String(value))}" ${field.attrs || ""} />`;
+}
+
+const DIRECTION_LABELS = { outflow: "支出", inflow: "收入" };
+
+/** 只读态和抽屉副标题里的金额：收入带「+」，和账本里的写法一致。 */
+function signedMoney(tx) {
+  return `${tx.direction === "inflow" ? "+" : ""}${formatMoney(tx.amount)}`;
+}
+
+/**
+ * 金额格：左边「支出/收入」分段，右边带符号前缀的金额，共用一个外框，读起来是「方向 + 金额」一个整体。
+ * 符号 −¥ / +¥ 由 CSS 按选中的 radio 切换，不用另写监听。
+ */
+function amountDirectionControl(tx) {
+  const amountField = EVIDENCE_EDIT_FIELDS.find((field) => field.name === "amount");
+  const directionField = EVIDENCE_EDIT_FIELDS.find((field) => field.name === "direction");
+  const direction = evidenceFieldDraftValue(directionField, tx);
+  return `
+    <span class="amount-field">
+      <span class="amount-direction" role="radiogroup" aria-label="收支方向">
+        ${Object.entries(DIRECTION_LABELS).map(([value, label]) => `
+          <label class="amount-direction-option">
+            <input type="radio" name="direction" value="${value}"${value === direction ? " checked" : ""} />
+            <span>${label}</span>
+          </label>
+        `).join("")}
+      </span>
+      <span class="amount-input">
+        <span class="amount-sign" aria-hidden="true"></span>
+        ${evidenceEditControl({ ...amountField, attrs: `${amountField.attrs} aria-label="金额"` }, tx)}
+      </span>
+    </span>
+  `;
 }
 
 /** 切进/切出分类网格前调用，把表单里已经敲的值存住，回来时不至于被重绘冲掉。 */
@@ -1691,7 +1753,7 @@ function parsedFieldsSection(payload, editing) {
         ${canEdit ? `<button class="btn btn-quiet btn-sm" type="button" data-evidence-edit>校正</button>` : ""}
       </div>
       <div class="evidence-grid">
-        ${evidenceField("金额", Number(tx.amount) > 0 ? formatMoney(tx.amount) : null, { edited: edited.has("amount") })}
+        ${evidenceAmountField(tx, { edited: edited.has("amount") || edited.has("direction") })}
         ${evidenceField("交易时间", displayDateTime(tx.paid_at), { edited: edited.has("paid_at") })}
         ${evidenceField("商户", tx.merchant, { edited: edited.has("merchant") })}
         ${evidenceField("消费内容", tx.thing || tx.product, { edited: edited.has("thing") })}
@@ -1716,12 +1778,20 @@ function parsedFieldsSection(payload, editing) {
     </div>
     <form class="evidence-edit-form" data-evidence-form novalidate>
       <div class="evidence-grid is-editing">
-        ${EVIDENCE_EDIT_FIELDS.map((field) => `
-          <label class="evidence-field" for="evidenceEdit_${field.name}">
-            <span>${escapeHtml(field.label)}</span>
-            ${field.name === "category" ? categoryPickerTrigger(draftCategory) : evidenceEditControl(field, tx)}
-          </label>
-        `).join("")}
+        ${EVIDENCE_EDIT_FIELDS.filter((field) => !field.embedded).map((field) => field.name === "amount"
+          // 金额格里还套着「支出/收入」两个 label，外层不能再是 label（label 不能嵌套），改用 div
+          ? `
+            <div class="evidence-field">
+              <span>${escapeHtml(field.label)}</span>
+              ${amountDirectionControl(tx)}
+            </div>
+          `
+          : `
+            <label class="evidence-field" for="evidenceEdit_${field.name}">
+              <span>${escapeHtml(field.label)}</span>
+              ${field.name === "category" ? categoryPickerTrigger(draftCategory) : evidenceEditControl(field, tx)}
+            </label>
+          `).join("")}
       </div>
       <p class="evidence-edit-error" data-evidence-error hidden></p>
       <div class="evidence-edit-actions">
@@ -3512,7 +3582,7 @@ function renderEvidence(payload, { editing = false } = {}) {
   status.textContent = missing.length ? "待订正" : tx.classification_status === "pending" ? "等待分类" : "证据完整";
   status.classList.toggle("needs-correction", missing.length > 0);
   $("evidenceTitle").textContent = tx.merchant || tx.product || "未知商户";
-  $("evidenceSubtitle").textContent = `${tx.paid_at ? displayDate(tx.paid_at) : "交易时间待补"} · ${Number(tx.amount) > 0 ? formatMoney(tx.amount) : "金额待补"}`;
+  $("evidenceSubtitle").textContent = `${tx.paid_at ? displayDate(tx.paid_at) : "交易时间待补"} · ${Number(tx.amount) > 0 ? signedMoney(tx) : "金额待补"}`;
   $("evidenceContent").innerHTML = `
     ${missing.length ? `
       <div class="evidence-correction-note" role="status">

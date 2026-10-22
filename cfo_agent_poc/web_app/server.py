@@ -1843,6 +1843,13 @@ def _edit_amount(value: object) -> float:
     return round(amount, 2)
 
 
+def _edit_direction(value: object) -> str:
+    direction = str(value or "").strip().lower()
+    if direction not in ("outflow", "inflow"):
+        raise FieldError("收支方向只能是支出或收入。")
+    return direction
+
+
 def _edit_paid_at(value: object) -> str:
     text = str(value or "").strip().replace("/", "-").replace(" ", "T")
     try:
@@ -1881,6 +1888,8 @@ def _edit_card_last4(value: object) -> str | None:
 
 EDITABLE_FIELDS = {
     "amount": _edit_amount,
+    # 解析只在「已退款」时判成收入，转账收款、红包会被记成支出，得能人工改回来
+    "direction": _edit_direction,
     "paid_at": _edit_paid_at,
     "merchant": lambda v: _edit_text(v, "商户", 60),
     "thing": lambda v: _edit_text(v, "消费内容", 40),

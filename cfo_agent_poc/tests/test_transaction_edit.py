@@ -82,6 +82,8 @@ class TransactionEditTests(unittest.TestCase):
             ({"paid_at": "上周三"}, "格式"),
             ({"category": "不存在的分类"}, "范围"),
             ({"payment_app": "paypal"}, "微信或支付宝"),
+            ({"direction": "refund"}, "支出或收入"),
+            ({"direction": ""}, "支出或收入"),
             ({"card_last4": "12"}, "4 位数字"),
             ({"merchant": "长" * 61}, "最多"),
         ):
@@ -185,6 +187,28 @@ class TransactionEditTests(unittest.TestCase):
         self.assertEqual(replayed.card_last4, "8888")
         self.assertEqual(replayed.category, "digital_services")
         self.assertEqual(replayed.classification_source, "manual_override")
+
+    def test_direction_can_be_flipped_to_inflow(self) -> None:
+        """解析把转账收款这类收入记成了支出，人工改成收入后只记这一个字段。"""
+        self.assertEqual(self.row()["direction"], "outflow")  # 前提：原始解析是支出
+        result = server.update_transaction_fields(self.uid, {"direction": "inflow", "amount": "8.00"})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["saved_fields"], ["direction"])
+        self.assertEqual(self.row()["direction"], "inflow")
+
+    def test_direction_correction_survives_a_reparse(self) -> None:
+        server.update_transaction_fields(self.uid, {"direction": "inflow"})
+        self.assertEqual(self.overrides().get("direction"), "inflow")
+
+        conn = sqlite3.connect(self.db_path)
+        capture_hash = conn.execute(
+            "select raw_capture_hash from transactions where transaction_uid = ?", (self.uid,)
+        ).fetchone()[0]
+        fresh = bill_store.parse_bill_text(BILL, source="test", source_hint="wechat")
+        self.assertEqual(fresh.direction, "outflow")  # 前提：原始解析确实是支出
+        replayed = bill_store.apply_persisted_classification(conn, fresh, capture_hash)
+        conn.close()
+        self.assertEqual(replayed.direction, "inflow")
 
     def test_reparse_keeps_untouched_fields_from_ocr(self) -> None:
         server.update_transaction_fields(self.uid, {"merchant": "楼下便利店"})
