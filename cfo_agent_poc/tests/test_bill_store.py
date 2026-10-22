@@ -233,5 +233,55 @@ class MerchantAndItemExtractionTests(unittest.TestCase):
                 self.assertEqual(store_from_platform_product(product), expected)
 
 
+class RefundParsingTests(unittest.TestCase):
+    """付出去又退回的支付账单记净额支出；单独的退款到账页才是收入。"""
+
+    PARTIAL = "\n".join([
+        "账单 全部账单",
+        "湘西博商新能源有限责任公司",
+        "-40.00",
+        "退款记录 已退款¥13.10 >",
+        "2026年10月6日 21:17:12",
+        "当前状态",
+        "已退款(¥13.10)",
+        "支付时间",
+        "2026年10月6日 20:27:49",
+        "商品",
+        "充电预付费",
+        "支付方式",
+        "招商银行信用卡(9063)",
+        "交易单号",
+        "4500000449202610062255000692",
+    ])
+
+    def test_partial_refund_is_a_net_outflow(self) -> None:
+        parsed = parse_bill_text(self.PARTIAL, source_hint="wechat")
+
+        self.assertEqual(parsed.direction, "outflow")
+        self.assertEqual(parsed.amount, 26.9)
+        self.assertEqual(parsed.status, "partially_refunded")
+
+    def test_paid_at_uses_payment_time_not_refund_time(self) -> None:
+        parsed = parse_bill_text(self.PARTIAL, source_hint="wechat")
+
+        self.assertEqual(parsed.paid_at, "2026-10-06T20:27:49")
+
+    def test_full_refund_nets_to_zero_without_becoming_income(self) -> None:
+        text = self.PARTIAL.replace("已退款¥13.10", "已全额退款").replace("已退款(¥13.10)", "已全额退款")
+        parsed = parse_bill_text(text, source_hint="wechat")
+
+        self.assertEqual(parsed.direction, "outflow")
+        self.assertEqual(parsed.amount, 0.0)
+        self.assertEqual(parsed.status, "refunded")
+        self.assertNotIn("missing_amount", parsed.parse_warnings)
+
+    def test_refund_receipt_with_plus_sign_is_income(self) -> None:
+        text = "\n".join(["退款详情", "+89.00", "退款成功", "退款时间", "2026年10月7日 10:00:00", "商品", "淘宝退款"])
+        parsed = parse_bill_text(text, source_hint="alipay")
+
+        self.assertEqual(parsed.direction, "inflow")
+        self.assertEqual(parsed.amount, 89.0)
+
+
 if __name__ == "__main__":
     unittest.main()

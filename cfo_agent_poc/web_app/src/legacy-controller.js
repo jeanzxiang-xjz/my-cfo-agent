@@ -546,10 +546,15 @@ const CORRECTION_FIELD_LABELS = {
   merchant: "商户",
 };
 
+/** 付出去又全额退回的单子：解析按净额记成 0，金额是对的，不是没识别出来 */
+function isFullyRefunded(tx) {
+  return tx?.status === "refunded" && tx?.direction !== "inflow" && Number(tx?.amount) === 0;
+}
+
 function transactionCorrectionFields(tx) {
   if (Array.isArray(tx?.correction_fields)) return tx.correction_fields;
   const missing = [];
-  if (!(Number(tx?.amount) > 0)) missing.push("amount");
+  if (!(Number(tx?.amount) > 0) && !isFullyRefunded(tx)) missing.push("amount");
   if (Number.isNaN(parseDate(tx?.paid_at).getTime())) missing.push("paid_at");
   if (!String(tx?.merchant || "").trim()) missing.push("merchant");
   return missing;
@@ -1578,6 +1583,7 @@ function evidenceSourceLabel(value) {
  * 符号对读屏不够明确，所以符号本身 aria-hidden，旁边留一段只给读屏的「支出/收入」。
  */
 function evidenceAmountField(tx, { edited = false } = {}) {
+  if (isFullyRefunded(tx)) return evidenceField("金额", "¥0.00（已全额退款）", { edited });
   if (!(Number(tx.amount) > 0)) return evidenceField("金额", null, { edited });
   const direction = tx.direction === "inflow" ? "inflow" : "outflow";
   const mark = edited ? `<em class="evidence-edited" title="这个字段被人工校正过">已校正</em>` : "";
@@ -3575,7 +3581,7 @@ function renderEvidence(payload, { editing = false } = {}) {
   status.textContent = missing.length ? "待订正" : tx.classification_status === "pending" ? "等待分类" : "证据完整";
   status.classList.toggle("needs-correction", missing.length > 0);
   $("evidenceTitle").textContent = tx.merchant || tx.product || "未知商户";
-  $("evidenceSubtitle").textContent = `${tx.paid_at ? displayDate(tx.paid_at) : "交易时间待补"} · ${Number(tx.amount) > 0 ? signedMoney(tx) : "金额待补"}`;
+  $("evidenceSubtitle").textContent = `${tx.paid_at ? displayDate(tx.paid_at) : "交易时间待补"} · ${Number(tx.amount) > 0 ? signedMoney(tx) : isFullyRefunded(tx) ? "已全额退款" : "金额待补"}`;
   $("evidenceContent").innerHTML = `
     ${missing.length ? `
       <div class="evidence-correction-note" role="status">
@@ -3748,7 +3754,7 @@ async function openEvidence(transactionUid) {
   $("evidenceStatus").classList.toggle("needs-correction", localNeedsCorrection);
   $("evidenceTitle").textContent = localTx?.merchant || localTx?.product || "正在载入";
   $("evidenceSubtitle").textContent = localTx
-    ? `${localTx.paid_at ? displayDate(localTx.paid_at) : "交易时间待补"} · ${Number(localTx.amount) > 0 ? formatMoney(localTx.amount) : "金额待补"}`
+    ? `${localTx.paid_at ? displayDate(localTx.paid_at) : "交易时间待补"} · ${Number(localTx.amount) > 0 ? formatMoney(localTx.amount) : isFullyRefunded(localTx) ? "已全额退款" : "金额待补"}`
     : "--";
   $("evidenceContent").innerHTML = `<div class="evidence-loading">正在读取本地截图、OCR 与解析记录…</div>`;
   drawer.hidden = false;

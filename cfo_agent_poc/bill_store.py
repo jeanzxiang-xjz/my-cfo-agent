@@ -531,10 +531,32 @@ def compact_text(text: str) -> str:
     return re.sub(r"\s+", "", text)
 
 
+SIGNED_AMOUNT_LINE = re.compile(r"(?m)^\s*([-+])\s*(\d+(?:\.\d{1,2})?)\s*$")
+
+
+def extract_amount_sign(text: str) -> str | None:
+    """详情页顶部大号金额的符号：「-40.00」是付出去的，「+89.00」是进账的。没带符号时返回 None。"""
+    match = SIGNED_AMOUNT_LINE.search(text)
+    return match.group(1) if match else None
+
+
+def extract_refunded_amount(text: str) -> float | None:
+    """
+    支付账单上挂着的退款：微信「当前状态 已退款(¥13.10)」「退款记录 已退款¥13.10」。
+    多次退款时状态栏给的是累计数，取出现过的最大值。只说「已全额退款」没给数时返回 None，由调用方按全额处理。
+    """
+    compact = compact_text(text)
+    values = [
+        float(value)
+        for value in re.findall(r"(?:已退款|部分退款|已部分退款|退款成功|退款金额)[(（]?[¥￥](\d+(?:\.\d{1,2})?)", compact)
+    ]
+    return max(values) if values else None
+
+
 def extract_amount(text: str) -> float | None:
-    match = re.search(r"(?m)^\s*[-+]\s*(\d+(?:\.\d{1,2})?)\s*$", text)
+    match = SIGNED_AMOUNT_LINE.search(text)
     if match:
-        return float(match.group(1))
+        return float(match.group(2))
 
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     for index, line in enumerate(lines):
@@ -562,6 +584,13 @@ def extract_amount(text: str) -> float | None:
 
 
 def extract_paid_at(text: str) -> str | None:
+    # 有「支付时间」栏就用它：退款记录的时间排在它上面，取全文第一个日期会拿成退款时间
+    paid_field = first_field(text, ["支付时间"])
+    if paid_field and paid_field != text:
+        paid_at = extract_paid_at(paid_field)
+        if paid_at:
+            return paid_at
+
     compact = compact_text(text)
     match = re.search(r"(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2}:\d{2}(?::\d{2})?)", compact)
     if match:
@@ -1115,11 +1144,25 @@ def parse_bill_text(text: str, source: str = "ios_shortcut", source_hint: str | 
     amount = extract_amount(text)
     status = extract_status(text)
     paid_at = extract_paid_at(text)
-    direction = "outflow"
-    if status == "refunded":
+    # 方向先看大号金额的符号。「-40.00」下面挂着「已退款(¥13.10)」是一笔退了一部分的支出，
+    # 不是收入；只有没带符号的单子才按「退款」字样判成进账（单独的退款到账页）。
+    sign = extract_amount_sign(text)
+    if sign == "+":
         direction = "inflow"
-    elif re.search(r"[-]\s*\d", compact_text(text)):
+    elif sign == "-":
         direction = "outflow"
+    else:
+        direction = "inflow" if status == "refunded" else "outflow"
+
+    # 付出去又退回一部分：账本只记净额。全额退了净额就是 0，不计入支出。
+    if direction == "outflow" and amount is not None and status == "refunded":
+        refunded = extract_refunded_amount(text)
+        if refunded is None and "全额退款" in compact_text(text):
+            refunded = amount
+        if refunded is not None:
+            amount = round(max(amount - refunded, 0.0), 2)
+            if amount > 0:
+                status = "partially_refunded"
 
     payment_method = first_field(text, ["支付方式", "付款方式"])
     bank_name, card_type, card_last4 = parse_payment_method(payment_method)

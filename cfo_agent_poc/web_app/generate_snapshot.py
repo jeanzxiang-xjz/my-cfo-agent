@@ -22,7 +22,8 @@ def correction_fields(record: dict) -> list[str]:
         amount = float(record.get("amount") or 0)
     except (TypeError, ValueError):
         amount = 0
-    if amount <= 0:
+    # 全额退款的支出按净额记成 0，金额是对的，不用补
+    if amount <= 0 and not (amount == 0 and record.get("status") == "refunded"):
         missing.append("amount")
 
     paid_at = record.get("paid_at")
