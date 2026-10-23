@@ -5432,9 +5432,25 @@ function renderPhoneLink(settings) {
   const install = $("installShortcutLink");
   install.hidden = !settings?.shortcut_url;
   if (settings?.shortcut_url) install.href = settings.shortcut_url;
-  $("rotateUploadToken").textContent = active ? "重新生成密钥" : "生成上传密钥";
+  setButtonLabel("rotateUploadToken", active ? "重新生成密钥" : "生成上传密钥");
   $("revokeUploadToken").hidden = !active;
 }
+
+/** 按钮里带图标时只改文字那一段，直接改 textContent 会把图标一起抹掉。 */
+function setButtonLabel(id, text) {
+  const button = $(id);
+  const label = button?.querySelector("[data-button-label]");
+  if (label) label.textContent = text;
+  else if (button) button.textContent = text;
+}
+
+/** 最近上传每一行的状态图标：完整入账、待订正、识别失败、识别中。 */
+const CAPTURE_STATUS_ICONS = {
+  done: "check-circle",
+  review: "warning-circle",
+  failed: "x-circle",
+  pending: "hourglass",
+};
 
 function captureItemHtml(capture) {
   const done = capture.status === "done";
@@ -5444,6 +5460,7 @@ function captureItemHtml(capture) {
     done: capture.needs_correction ? "待订正 · 打开处理" : "完整入账",
     failed: "识别失败",
   }[capture.status] || "识别中…";
+  const statusKind = capture.status === "failed" ? "failed" : !done ? "pending" : capture.needs_correction ? "review" : "done";
   const meta = [displayDateTime(capture.created_at), CAPTURE_SOURCE_LABELS[capture.source] || ""].filter(Boolean).join(" · ");
   const classes = ["sync-item"];
   if (capture.needs_correction || capture.status === "failed") classes.push("needs-correction");
@@ -5456,7 +5473,7 @@ function captureItemHtml(capture) {
       </div>
       <div>
         <div class="sync-item-amount">${escapeHtml(done ? amount || "金额待补" : "")}</div>
-        <div class="sync-item-category">${escapeHtml(statusText)}</div>
+        <div class="sync-item-category is-${statusKind}">${ph(CAPTURE_STATUS_ICONS[statusKind])}${escapeHtml(statusText)}</div>
       </div>
     </button>
   `;
@@ -5544,7 +5561,7 @@ async function uploadCaptureFiles(files) {
   if (!files.length || state.captureBusy) return;
   state.captureBusy = true;
   setCaptureControlsDisabled(true);
-  $("pickCaptureFiles").textContent = `上传中 0/${files.length}`;
+  setButtonLabel("pickCaptureFiles", `上传中 0/${files.length}`);
   const tally = { done: 0, correction: 0, failed: 0, pending: 0 };
   try {
     for (const [index, file] of files.entries()) {
@@ -5562,7 +5579,7 @@ async function uploadCaptureFiles(files) {
         tally.failed += 1;
         showToast(`${file.name}：${error.message}`, "error");
       }
-      $("pickCaptureFiles").textContent = `上传中 ${index + 1}/${files.length}`;
+      setButtonLabel("pickCaptureFiles", `上传中 ${index + 1}/${files.length}`);
     }
     const parts = [];
     if (tally.done) parts.push(`入账 ${tally.done} 笔`);
@@ -5573,7 +5590,7 @@ async function uploadCaptureFiles(files) {
     refreshPendingClassifications();
   } finally {
     state.captureBusy = false;
-    $("pickCaptureFiles").textContent = "上传截图";
+    setButtonLabel("pickCaptureFiles", "上传截图");
     setCaptureControlsDisabled(false);
     await loadCaptureModal();
   }

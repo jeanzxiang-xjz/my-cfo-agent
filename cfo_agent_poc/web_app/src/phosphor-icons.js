@@ -1,5 +1,5 @@
 // 由 scripts/build_phosphor_icons.py 生成，别手改。
-// 图标来自 Phosphor Icons（regular 字重，MIT 协议，© 2020-2024 Phosphor Icons）。
+// 图标来自 Phosphor Icons（regular 字重，MIT 协议，© 2020-2024 Phosphor Icons）；末尾几个是按同一规格手绘的补充。
 // viewBox 是 0 0 256 256；线条用 class="s"，填充用 class="f"，样式在 styles.css 的 svg.ph 段。
 export const PHOSPHOR_ICONS = {
   "arrow-down": '<line x1="128" y1="40" x2="128" y2="216" class="s r"/><polyline points="56 144 128 216 200 144" class="s r"/>',
@@ -28,6 +28,7 @@ export const PHOSPHOR_ICONS = {
   "charging-station": '<polyline points="112 168 128 128 96 128 112 88" class="s r"/><path d="M56,216V56A16,16,0,0,1,72,40h80a16,16,0,0,1,16,16V216" class="s r"/><line x1="32" y1="216" x2="192" y2="216" class="s r"/><path d="M168,112h24a16,16,0,0,1,16,16v40a16,16,0,0,0,16,16h0a16,16,0,0,0,16-16V86.63a16,16,0,0,0-4.69-11.32L216,56" class="s r"/>',
   "chart-line-up": '<polyline points="224 208 32 208 32 48" class="s r"/><polyline points="200 72 128 144 96 112 32 176" class="s r"/><polyline points="200 112 200 72 160 72" class="s r"/>',
   "chat-circle-dots": '<circle cx="128" cy="128" r="12" class="f"/><circle cx="84" cy="128" r="12" class="f"/><circle cx="172" cy="128" r="12" class="f"/><path d="M79.93,211.11a96,96,0,1,0-35-35h0L32.42,213.46a8,8,0,0,0,10.12,10.12l37.39-12.47Z" class="s r"/>',
+  "check-circle": '<polyline points="88 136 112 160 168 104" class="s r"/><circle cx="128" cy="128" r="96" class="s r"/>',
   "cherries": '<circle cx="88" cy="160" r="64" class="s r"/><path d="M112,136s-8,8-24,8-24-8-24-8" class="s r"/><path d="M200,120s-8,8-24,8-24-8-24-8" class="s r"/><path d="M176,128C168,16,56,32,56,32c48,32,32,112,32,112" class="s r"/><path d="M123.81,107a64,64,0,1,1,16.41,90.12" class="s r"/>',
   "cloud": '<path d="M80,128a80,80,0,1,1,80,80H72A56,56,0,1,1,85.92,97.74" class="s r"/>',
   "clover": '<path d="M128,120s90-96,0-96S128,120,128,120Z" class="s r"/><path d="M128,120s-96-90-96,0S128,120,128,120Z" class="s r"/><path d="M128,120s-90,96,0,96S128,120,128,120Z" class="s r"/><path d="M128,120s96,90,96,0S128,120,128,120Z" class="s r"/><path d="M128,120s64,56,80,120" class="s r"/>',
@@ -43,6 +44,7 @@ export const PHOSPHOR_ICONS = {
   "dice-six": '<rect x="40" y="40" width="176" height="176" rx="24" class="s r"/><circle cx="92" cy="84" r="12" class="f"/><circle cx="164" cy="84" r="12" class="f"/><circle cx="92" cy="128" r="12" class="f"/><circle cx="164" cy="128" r="12" class="f"/><circle cx="92" cy="172" r="12" class="f"/><circle cx="164" cy="172" r="12" class="f"/>',
   "dog": '<line x1="128" y1="192" x2="128" y2="216" class="s r"/><polyline points="144 176 128 192 112 176" class="s r"/><line x1="104" y1="48" x2="152" y2="48" class="s r"/><path d="M104,48,50.37,32.24a8,8,0,0,0-9.8,6.29l-16.42,88c-1.54,8.23,9,13,14.16,6.42Z" class="s r"/><path d="M152,48l53.63-15.76a8,8,0,0,1,9.8,6.29l16.42,88c1.54,8.23-9,13-14.16,6.42Z" class="s r"/><circle cx="92" cy="140" r="12" class="f"/><circle cx="164" cy="140" r="12" class="f"/><path d="M208,120.38V184a32,32,0,0,1-32,32H80a32,32,0,0,1-32-32V120.38" class="s r"/>',
   "dots-three-circle": '<circle cx="128" cy="128" r="96" class="s" stroke-miterlimit="10"/><circle cx="128" cy="128" r="12" class="f"/><circle cx="172" cy="128" r="12" class="f"/><circle cx="84" cy="128" r="12" class="f"/>',
+  "download-simple": '<line x1="128" y1="144" x2="128" y2="32" class="s r"/><polyline points="216 144 216 208 40 208 40 144" class="s r"/><polyline points="168 104 128 144 88 104" class="s r"/>',
   "drop": '<path d="M208,144c0-72-80-128-80-128S48,72,48,144a80,80,0,0,0,160,0Z" class="s r"/><path d="M136,192c20-3.37,36.61-20,40-40" class="s r"/>',
   "envelope-simple": '<path d="M32,56H224a0,0,0,0,1,0,0V192a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V56A0,0,0,0,1,32,56Z" class="s r"/><polyline points="224 56 128 144 32 56" class="s r"/>',
   "eye": '<path d="M128,56C48,56,16,128,16,128s32,72,112,72,112-72,112-72S208,56,128,56Z" class="s r"/><circle cx="128" cy="128" r="40" class="s r"/>',
@@ -58,10 +60,14 @@ export const PHOSPHOR_ICONS = {
   "headphones": '<path d="M224,128H192a16,16,0,0,0-16,16v40a16,16,0,0,0,16,16h16a16,16,0,0,0,16-16V128a96,96,0,1,0-192,0v56a16,16,0,0,0,16,16H64a16,16,0,0,0,16-16V144a16,16,0,0,0-16-16H32" class="s r"/>',
   "heart": '<path d="M128,224S24,168,24,102A54,54,0,0,1,78,48c22.59,0,41.94,12.31,50,32,8.06-19.69,27.41-32,50-32a54,54,0,0,1,54,54C232,168,128,224,128,224Z" class="s r"/>',
   "heartbeat": '<polyline points="32 136 72 136 88 112 120 160 136 136 160 136" class="s r"/><path d="M24,104c0-.67,0-1.33,0-2A54,54,0,0,1,78,48c22.59,0,41.94,12.31,50,32,8.06-19.69,27.41-32,50-32a54,54,0,0,1,54,54c0,66-104,122-104,122s-42-22.6-72.58-56" class="s r"/>',
+  "hourglass": '<path d="M128,128,67.2,82.4A8,8,0,0,1,64,76V40a8,8,0,0,1,8-8H184a8,8,0,0,1,8,8V75.64A8,8,0,0,1,188.82,82L128,128h0" class="s r"/><path d="M128,128,67.2,173.6A8,8,0,0,0,64,180v36a8,8,0,0,0,8,8H184a8,8,0,0,0,8-8V180.36a8,8,0,0,0-3.18-6.38L128,128h0" class="s r"/>',
   "island": '<path d="M24,224s40-32,104-32,104,32,104,32" class="s r"/><path d="M176,72c-80,40-48,120-48,120" class="s r"/><path d="M176,72s-17.2-8.58-36-8c-17.46.57-36.3,9.19-44,40" class="s r"/><path d="M176,72S160,9.5,104,40.75" class="s r"/><path d="M232,136c0-64-56-64-56-64" class="s r"/><path d="M176,72s16-52.9,56-22.67" class="s r"/><path d="M184,136s22.61-32-7.95-64" class="s r"/><circle cx="52" cy="140" r="20" class="s r"/>',
+  "key": '<path d="M93.17,122.83A71.68,71.68,0,0,1,88,95.91c0-38.58,31.08-70.64,69.64-71.87A72,72,0,0,1,232,98.36C230.73,136.92,198.67,168,160.09,168a71.68,71.68,0,0,1-26.92-5.17h0L120,176H96v24H72v24H40a8,8,0,0,1-8-8V187.31a8,8,0,0,1,2.34-5.65l58.83-58.83Z" class="s r"/><circle cx="180" cy="76" r="12" class="f"/>',
   "letter-circle-p": '<circle cx="128" cy="128" r="96" class="s r"/><path d="M104,144h32a28,28,0,0,0,0-56H104v80" class="s r"/>',
+  "link": '<path d="M141.38,64.68l11-11a46.62,46.62,0,0,1,65.94,0h0a46.62,46.62,0,0,1,0,65.94L193.94,144,183.6,154.34a46.63,46.63,0,0,1-66-.05h0A46.48,46.48,0,0,1,104,120.06" class="s r"/><path d="M114.62,191.32l-11,11a46.63,46.63,0,0,1-66-.05h0a46.63,46.63,0,0,1,.06-65.89L72.4,101.66a46.62,46.62,0,0,1,65.94,0h0A46.45,46.45,0,0,1,152,135.94" class="s r"/>',
   "list-bullets": '<line x1="88" y1="64" x2="216" y2="64" class="s r"/><line x1="88" y1="128" x2="216" y2="128" class="s r"/><line x1="88" y1="192" x2="216" y2="192" class="s r"/><circle cx="44" cy="64" r="12" class="f"/><circle cx="44" cy="128" r="12" class="f"/><circle cx="44" cy="192" r="12" class="f"/>',
   "magnifying-glass": '<circle cx="112" cy="112" r="80" class="s r"/><line x1="168.57" y1="168.57" x2="224" y2="224" class="s r"/>',
+  "microphone": '<rect x="88" y="24" width="80" height="144" rx="40" class="s r"/><line x1="128" y1="200" x2="128" y2="240" class="s r"/><path d="M200,128a72,72,0,0,1-144,0" class="s r"/>',
   "money-wavy": '<path d="M240,186.79c-91.64,44.77-132.36-42.35-224,2.42v-120c91.64-44.77,132.36,42.35,224-2.42Z" class="s r"/><circle cx="128" cy="128" r="24" class="s r"/><line x1="48" y1="96" x2="48" y2="144" class="s r"/><line x1="208" y1="112" x2="208" y2="160" class="s r"/>',
   "package": '<line x1="128" y1="129.09" x2="128" y2="231.97" class="s r"/><polyline points="32.7 76.92 128 129.08 223.3 76.92" class="s r"/><path d="M219.84,182.84l-88,48.18a8,8,0,0,1-7.68,0l-88-48.18a8,8,0,0,1-4.16-7V80.18a8,8,0,0,1,4.16-7l88-48.18a8,8,0,0,1,7.68,0l88,48.18a8,8,0,0,1,4.16,7v95.64A8,8,0,0,1,219.84,182.84Z" class="s r"/><polyline points="81.56 48.31 176 100 176 152" class="s r"/>',
   "paw-print": '<circle cx="212" cy="108" r="20" class="s r"/><circle cx="44" cy="108" r="20" class="s r"/><circle cx="92" cy="60" r="20" class="s r"/><circle cx="164" cy="60" r="20" class="s r"/><path d="M128,104A36,36,0,0,0,93.43,130a43.49,43.49,0,0,1-20.67,25.9,32,32,0,0,0,27.73,57.62,72.49,72.49,0,0,1,55,0,32,32,0,0,0,27.73-57.62A43.46,43.46,0,0,1,162.57,130,36,36,0,0,0,128,104Z" class="s r"/>',
@@ -69,6 +75,7 @@ export const PHOSPHOR_ICONS = {
   "phone": '<path d="M164.39,145.34a8,8,0,0,1,7.59-.69l47.16,21.13a8,8,0,0,1,4.8,8.3A48.33,48.33,0,0,1,176,216,136,136,0,0,1,40,80,48.33,48.33,0,0,1,81.92,32.06a8,8,0,0,1,8.3,4.8l21.13,47.2a8,8,0,0,1-.66,7.53L89.32,117a7.93,7.93,0,0,0-.54,7.81c8.27,16.93,25.77,34.22,42.75,42.41a7.92,7.92,0,0,0,7.83-.59Z" class="s r"/>',
   "plus": '<line x1="40" y1="128" x2="216" y2="128" class="s r"/><line x1="128" y1="40" x2="128" y2="216" class="s r"/>',
   "plus-circle": '<circle cx="128" cy="128" r="96" class="s" stroke-miterlimit="10"/><line x1="88" y1="128" x2="168" y2="128" class="s r"/><line x1="128" y1="88" x2="128" y2="168" class="s r"/>',
+  "prohibit": '<line x1="195.88" y1="195.88" x2="60.12" y2="60.12" class="s r"/><circle cx="128" cy="128" r="96" class="s" stroke-miterlimit="10"/>',
   "receipt": '<line x1="80" y1="104" x2="176" y2="104" class="s r"/><line x1="80" y1="136" x2="176" y2="136" class="s r"/><path d="M32,208V56a8,8,0,0,1,8-8H216a8,8,0,0,1,8,8V208l-32-16-32,16-32-16L96,208,64,192Z" class="s r"/>',
   "record": '<circle cx="128" cy="128" r="96" class="s" stroke-miterlimit="10"/><circle cx="128" cy="128" r="64" class="s" stroke-miterlimit="10"/>',
   "scissors": '<circle cx="60" cy="76" r="28" class="s r"/><circle cx="60" cy="180" r="28" class="s r"/><line x1="136" y1="128" x2="83.11" y2="164.19" class="s r"/><line x1="232" y1="62.32" x2="164.33" y2="108.61" class="s r"/><line x1="232" y1="193.68" x2="83.11" y2="91.81" class="s r"/>',
@@ -86,10 +93,10 @@ export const PHOSPHOR_ICONS = {
   "tray": '<rect x="40" y="40" width="176" height="176" rx="8" class="s r"/><path d="M40,160H76.69a8,8,0,0,1,5.65,2.34l19.32,19.32a8,8,0,0,0,5.65,2.34h41.38a8,8,0,0,0,5.65-2.34l19.32-19.32a8,8,0,0,1,5.65-2.34H216" class="s r"/>',
   "trend-down": '<polyline points="232 192 136 96 96 136 24 64" class="s r"/><polyline points="232 128 232 192 168 192" class="s r"/>',
   "trend-up": '<polyline points="232 56 136 152 96 112 24 184" class="s r"/><polyline points="232 120 232 56 168 56" class="s r"/>',
+  "upload-simple": '<line x1="128" y1="144" x2="128" y2="32" class="s r"/><polyline points="216 144 216 208 40 208 40 144" class="s r"/><polyline points="88 72 128 32 168 72" class="s r"/>',
   "user-circle": '<circle cx="128" cy="128" r="96" class="s r"/><circle cx="128" cy="120" r="40" class="s r"/><path d="M63.8,199.37a72,72,0,0,1,128.4,0" class="s r"/>',
-  "vibrate": '<rect x="40" y="80" width="176" height="96" rx="16" transform="translate(256) rotate(90)" class="s r"/><line x1="208" y1="88" x2="208" y2="168" class="s r"/><line x1="240" y1="104" x2="240" y2="152" class="s r"/><line x1="48" y1="88" x2="48" y2="168" class="s r"/><line x1="16" y1="104" x2="16" y2="152" class="s r"/>',
   "warning-circle": '<circle cx="128" cy="128" r="96" class="s" stroke-miterlimit="10"/><line x1="128" y1="136" x2="128" y2="80" class="s r"/><circle cx="128" cy="172" r="12" class="f"/>',
-  "waveform": '<line x1="48" y1="96" x2="48" y2="160" class="s r"/><line x1="88" y1="32" x2="88" y2="224" class="s r"/><line x1="128" y1="64" x2="128" y2="192" class="s r"/><line x1="168" y1="96" x2="168" y2="160" class="s r"/><line x1="208" y1="80" x2="208" y2="176" class="s r"/>',
   "x": '<line x1="200" y1="56" x2="56" y2="200" class="s r"/><line x1="200" y1="200" x2="56" y2="56" class="s r"/>',
   "x-circle": '<line x1="160" y1="96" x2="96" y2="160" class="s r"/><line x1="96" y1="96" x2="160" y2="160" class="s r"/><circle cx="128" cy="128" r="96" class="s r"/>',
+  "action-button": '<path d="M180,244V96a64,64,0,0,1,64-64" class="s r"/><rect x="140" y="96" width="40" height="80" rx="16" class="f"/><line x1="12" y1="136" x2="108" y2="136" class="s r"/><polyline points="64 92 108 136 64 180" class="s r"/>',
 };

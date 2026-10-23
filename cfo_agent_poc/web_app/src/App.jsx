@@ -740,7 +740,7 @@ function CaptureModal() {
         <div className="sync-body">
           <aside className="sync-guidance" aria-labelledby="captureGuidanceTitle">
             <span className="sync-guidance-icon" aria-hidden="true">
-              <Ph name="device-mobile" />
+              <Ph name="receipt" />
             </span>
             <div>
               <strong id="captureGuidanceTitle">截图前，先打开账单详情页</strong>
@@ -749,13 +749,17 @@ function CaptureModal() {
           </aside>
 
           <section className="sync-state-card phone-link-card" id="phoneLinkCard" aria-labelledby="phoneLinkTitle">
-            <span id="phoneLinkLabel">连接 iPhone</span>
+            <span id="phoneLinkLabel" className="phone-link-label">
+              <Ph name="link" />
+              连接 iPhone
+            </span>
             <strong id="phoneLinkTitle">读取中…</strong>
             <small id="phoneLinkMeta" />
 
             <div className="phone-link-secret" id="phoneLinkSecret" hidden>
               <code id="phoneLinkToken" />
               <button className="btn btn-quiet" type="button" id="copyUploadToken">
+                <Ph name="copy" />
                 复制密钥
               </button>
               <p>密钥只显示这一次，请现在复制。安装快捷指令时粘贴它；以后忘了就重新生成一个。</p>
@@ -771,18 +775,22 @@ function CaptureModal() {
               <span>上传地址</span>
               <code id="phoneLinkUrl">--</code>
               <button className="link-button" type="button" id="copyUploadUrl">
+                <Ph name="copy" />
                 复制
               </button>
             </div>
 
             <div className="phone-link-actions">
               <a className="btn btn-primary" id="installShortcutLink" href="#" target="_blank" rel="noopener noreferrer" hidden>
+                <Ph name="download-simple" />
                 安装快捷指令
               </a>
               <button className="btn btn-quiet" type="button" id="rotateUploadToken">
-                生成上传密钥
+                <Ph name="key" />
+                <span data-button-label>生成上传密钥</span>
               </button>
               <button className="btn btn-quiet" type="button" id="revokeUploadToken" hidden>
+                <Ph name="prohibit" />
                 停用密钥
               </button>
             </div>
@@ -799,7 +807,7 @@ function CaptureModal() {
               <li className="shortcut-trigger is-recommended">
                 <div className="shortcut-trigger-head">
                   <span className="shortcut-trigger-icon">
-                    <Ph name="vibrate" />
+                    <Ph name="action-button" />
                   </span>
                   <h4>按住左侧操作按钮</h4>
                   <span className="shortcut-trigger-badge">推荐</span>
@@ -856,7 +864,7 @@ function CaptureModal() {
               <li className="shortcut-trigger">
                 <div className="shortcut-trigger-head">
                   <span className="shortcut-trigger-icon">
-                    <Ph name="waveform" />
+                    <Ph name="microphone" />
                   </span>
                   <h4>对 Siri 说「记一笔」</h4>
                 </div>
@@ -880,7 +888,8 @@ function CaptureModal() {
           <div className="sync-actions">
             <input id="captureFileInput" type="file" accept="image/png,image/jpeg" multiple hidden />
             <button id="pickCaptureFiles" className="btn btn-primary" type="button">
-              上传截图
+              <Ph name="upload-simple" />
+              <span data-button-label>上传截图</span>
             </button>
           </div>
         </div>

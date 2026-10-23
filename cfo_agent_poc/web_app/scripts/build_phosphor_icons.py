@@ -31,8 +31,23 @@ ICON_NAMES = sorted({
     "file-text", "tray", "warning-circle", "envelope-simple", "x", "magnifying-glass", "device-mobile",
     "heart",
     # 记一笔：触发快捷指令的四种方式
-    "vibrate", "hand-tap", "record", "waveform",
+    "hand-tap", "record",
+    # 记一笔弹窗
+    "link", "download-simple", "key", "prohibit", "microphone", "upload-simple",
+    "check-circle", "hourglass",
 })
+
+# Phosphor 里没有、按同一规格手绘的图标（256 网格、16 线宽、圆头圆角，class 规则同上）。
+CUSTOM_ICONS = {
+    # iPhone 操作按钮：机身左侧边线（顶部圆角拐出）+ 实心侧键 + 指向侧键的箭头，照苹果「操作按钮」图标的构图
+    "action-button": (
+        # 形状比较瘦，几处都放大到贴近 256 画布边缘（留出半个线宽），视觉体量才和旁边的手势图标相当
+        '<path d="M180,244V96a64,64,0,0,1,64-64" class="s r"/>'
+        '<rect x="140" y="96" width="40" height="80" rx="16" class="f"/>'
+        '<line x1="12" y1="136" x2="108" y2="136" class="s r"/>'
+        '<polyline points="64 92 108 136 64 180" class="s r"/>'
+    ),
+}
 
 STROKE = re.compile(r'(?: fill="none")? stroke="currentColor"((?: stroke-[a-z]+="[^"]*")*)')
 ROUND = ' stroke-linecap="round" stroke-linejoin="round"'
@@ -61,7 +76,7 @@ def main(library: Path) -> None:
     out = Path(__file__).resolve().parent.parent / "src" / "phosphor-icons.js"
     lines = [
         "// 由 scripts/build_phosphor_icons.py 生成，别手改。",
-        "// 图标来自 Phosphor Icons（regular 字重，MIT 协议，© 2020-2024 Phosphor Icons）。",
+        "// 图标来自 Phosphor Icons（regular 字重，MIT 协议，© 2020-2024 Phosphor Icons）；末尾几个是按同一规格手绘的补充。",
         "// viewBox 是 0 0 256 256；线条用 class=\"s\"，填充用 class=\"f\"，样式在 styles.css 的 svg.ph 段。",
         "export const PHOSPHOR_ICONS = {",
     ]
@@ -70,10 +85,12 @@ def main(library: Path) -> None:
         if not path.exists():
             sys.exit(f"图标库里没有 {name}（{path}）")
         lines.append(f'  "{name}": \'{convert(path.read_text(encoding="utf-8"))}\',')
+    for name, markup in sorted(CUSTOM_ICONS.items()):
+        lines.append(f'  "{name}": \'{markup}\',')
     lines.append("};")
     lines.append("")
     out.write_text("\n".join(lines), encoding="utf-8")
-    print(f"wrote {out} ({len(ICON_NAMES)} icons, {out.stat().st_size / 1024:.1f}KB)")
+    print(f"wrote {out} ({len(ICON_NAMES)} + {len(CUSTOM_ICONS)} custom icons, {out.stat().st_size / 1024:.1f}KB)")
 
 
 if __name__ == "__main__":

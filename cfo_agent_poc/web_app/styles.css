@@ -8684,6 +8684,38 @@ svg.category-symbol {
   font-size: var(--fs-xs);
 }
 
+/* 记一笔弹窗：按钮和链接里的图标 */
+.phone-link-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.phone-link-label svg {
+  width: 14px;
+  height: 14px;
+}
+
+.phone-link-card .btn svg,
+.phone-link-secret .btn svg,
+.sync-actions .btn svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.phone-link-url .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: center;
+}
+
+.phone-link-url .link-button svg {
+  width: 13px;
+  height: 13px;
+}
+
 .phone-link-url code {
   min-width: 0;
   color: var(--text);
@@ -8912,6 +8944,24 @@ svg.category-symbol {
 
 .sync-item-meta {
   margin-top: 2px;
+}
+
+/* 最近上传的状态：图标在前，和文字同色；完整入账的勾用玉色，其余跟随行的状态色 */
+.sync-item-category {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.sync-item-category svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+.sync-item-category.is-done svg {
+  color: var(--jade-8);
 }
 
 .sync-item-amount {
