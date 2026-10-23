@@ -1,3 +1,11 @@
+// 图标表由 main.jsx 挂到 window 上：这个文件不能加 import（原因见 ownerMeta 上面的注释）。
+const PHOSPHOR_ICONS = window.cfoPhosphorIcons || {};
+
+/** Phosphor 图标（regular 字重）。图形在 phosphor-icons.js，线宽和填充在 styles.css 的 svg.ph 段。 */
+function ph(name, className = "") {
+  return `<svg class="ph${className ? ` ${className}` : ""}" viewBox="0 0 256 256" aria-hidden="true" focusable="false">${PHOSPHOR_ICONS[name] || PHOSPHOR_ICONS["dots-three-circle"]}</svg>`;
+}
+
 const currency = new Intl.NumberFormat("zh-CN", {
   style: "currency",
   currency: "CNY",
@@ -106,11 +114,11 @@ const defaultBudgets = {
 };
 
 const ICONS = {
-  empty: `<svg viewBox="0 0 24 24"><path d="M4 7.5h16v11a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z"/><path d="M4 7.5 6.4 4h11.2L20 7.5"/><path d="M9.6 11.4h4.8"/></svg>`,
-  filter: `<svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>`,
-  spark: `<svg viewBox="0 0 24 24"><path d="M4 16.5 9 11l3.4 3.2L20 6.5"/><path d="M15.4 6.5H20V11"/></svg>`,
-  mail: `<svg viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4.5 7.5 7.5 5.5 7.5-5.5"/></svg>`,
-  alert: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.8v4.6M12 15.8v.4"/></svg>`,
+  empty: ph("tray"),
+  filter: ph("funnel"),
+  spark: ph("chart-line-up"),
+  mail: ph("envelope-simple"),
+  alert: ph("warning-circle"),
 };
 
 function normalizeBudgets(saved = {}) {
@@ -1401,16 +1409,16 @@ function renderPromptRow(item, index) {
       ` : `
         <div class="prompt-row-actions">
           <button type="button" data-prompt-move="up" data-prompt-id="${escapeHtml(item.id)}" aria-label="上移${escapeHtml(item.label)}"${index === 0 ? " disabled" : readonly}>
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 12.5v-9M4.5 7 8 3.5 11.5 7" /></svg>
+            ${ph("arrow-up")}
           </button>
           <button type="button" data-prompt-move="down" data-prompt-id="${escapeHtml(item.id)}" aria-label="下移${escapeHtml(item.label)}"${index === state.customPrompts.length - 1 ? " disabled" : readonly}>
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 3.5v9M4.5 9 8 12.5 11.5 9" /></svg>
+            ${ph("arrow-down")}
           </button>
           <button type="button" data-prompt-edit="${escapeHtml(item.id)}" aria-label="编辑${escapeHtml(item.label)}"${readonly}>
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M11.2 2.8 13.2 4.8 5.6 12.4 2.8 13.2 3.6 10.4Z" /></svg>
+            ${ph("pencil-simple")}
           </button>
           <button type="button" data-prompt-confirm-delete="${escapeHtml(item.id)}" aria-label="删除${escapeHtml(item.label)}"${readonly}>
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 4.6h10M6.3 4.6V3h3.4v1.6M4.4 4.6l.6 8.4h6l.6-8.4" /></svg>
+            ${ph("trash")}
           </button>
         </div>
       `}
@@ -1703,7 +1711,7 @@ function categoryPickerTrigger(currentId) {
     <input type="hidden" id="evidenceEdit_category" name="category" value="${escapeHtml(currentId || "uncategorized")}" />
     <button type="button" class="category-picker-trigger" data-evidence-category-trigger>
       <span class="category-picker-trigger-label">${escapeHtml(label)}</span>
-      <svg class="category-picker-trigger-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      ${ph("caret-down", "category-picker-trigger-caret")}
     </button>
   `;
 }
@@ -2283,9 +2291,9 @@ const TREND_DETAIL_TITLE = { day: "当日交易", week: "一周消费", month: "
 const TREND_RESET_LABEL = { day: "回到今天", week: "回到本周", month: "回到本月" };
 const TREND_PREV_LABEL = { day: "前一天", week: "上一周", month: "上个月" };
 const TREND_NEXT_LABEL = { day: "后一天", week: "下一周", month: "下个月" };
-const TREND_CHEVRON_LEFT = `<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M10 3.5 5.5 8 10 12.5" /></svg>`;
-const TREND_CHEVRON_RIGHT = `<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" /></svg>`;
-const TREND_ARROW_RIGHT = `<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 8h10M9 4l4 4-4 4" /></svg>`;
+const TREND_CHEVRON_LEFT = ph("caret-left");
+const TREND_CHEVRON_RIGHT = ph("caret-right");
+const TREND_ARROW_RIGHT = ph("arrow-right");
 
 function yearPrefix(date) {
   return date.getFullYear() !== getAnchorDate().getFullYear() ? `${date.getFullYear()}年` : "";
@@ -2369,7 +2377,7 @@ function trendTransactionRow(tx, { showTime = false } = {}) {
         aria-label="${escapeHtml(`${time} ${title} ${amount}，查看原始账单`)}"
       >
         ${showTime ? `<span class="trend-txn-time">${escapeHtml(time)}</span>` : ""}
-        <span class="trend-txn-icon" style="color:${pending ? "var(--amber-8)" : categoryColor(category)}">${categoryIcon(pending ? "circle" : categoryById(category)?.icon_key)}</span>
+        <span class="trend-txn-icon" style="color:${pending ? "var(--amber-8)" : categoryColor(category)}">${categoryIcon(pending ? "dots-three-circle" : categoryById(category)?.icon_key)}</span>
         <span class="trend-txn-main">
           <strong title="${escapeHtml(title)}">${escapeHtml(title)}</strong>
           <small title="${escapeHtml(meta)}">${escapeHtml(meta)}</small>
@@ -2417,10 +2425,9 @@ function trendComparisonHtml(item, stats, mode) {
   const diff = stats.total - sum(previous);
   if (Math.abs(diff) < 0.005) return `<p class="trend-compare is-flat">${label}持平</p>`;
   const less = diff < 0;
-  const arrow = less ? "M8 3v10M4 9l4 4 4-4" : "M8 13V3M4 7l4-4 4 4";
   return `
     <p class="trend-compare ${less ? "is-down" : "is-up"}">
-      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="${arrow}" /></svg>
+      ${ph(less ? "trend-down" : "trend-up")}
       ${label}${less ? "少" : "多"}支出 <strong>${escapeHtml(formatMoney(Math.abs(diff)))}</strong>
     </p>
   `;
@@ -3030,48 +3037,22 @@ function wireAccount() {
 
 /* ---------------------------- 分类目录维护 ---------------------------- */
 
-const CATEGORY_ICON_PATHS = {
-  cup: '<path d="M4 8h12v7a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5Z"/><path d="M16 9h2a3 3 0 0 1 0 6h-2M7 3v2M12 3v2"/>',
-  meal: '<path d="M5 3v6a3 3 0 0 0 6 0V3M8 3v18M19 21V3c-3 2-4 5-4 9h4"/>',
-  car: '<path d="m3 11 2-6h14l2 6v8H3ZM3 11h18M6 19v2M18 19v2M7 15h1M16 15h1"/>',
-  bolt: '<path d="m13 2-9 12h7l-1 8L20 9h-7Z"/>',
-  bag: '<path d="M4 8h16l-1 13H5ZM8 8V6a4 4 0 0 1 8 0v2"/>',
-  fruit: '<path d="M12 8c-5-3-10 0-8 6 1 4 3 8 8 6 5 2 7-2 8-6 2-6-3-9-8-6ZM12 8V5M12 5c0-3 3-3 5-3 0 3-2 4-5 3Z"/>',
-  book: '<path d="M3 4h5a4 4 0 0 1 4 4v13a4 4 0 0 0-4-2H3ZM21 4h-5a4 4 0 0 0-4 4v13a4 4 0 0 1 4-2h5Z"/>',
-  cart: '<path d="M2 3h3l3 12h11l3-9H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/>',
-  train: '<rect x="5" y="3" width="14" height="15" rx="3"/><path d="M5 10h14M9 14h.01M15 14h.01M8 18l-2 3M16 18l2 3"/>',
-  heart: '<path d="M12 21 4 13C-2 7 6 0 12 7c6-7 14 0 8 6Z"/>',
-  home: '<path d="m3 10 9-7 9 7M5 9v12h14V9M9 21v-8h6v8"/>',
-  phone: '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/>',
-  ticket: '<path d="M3 6h18v4a2 2 0 0 0 0 4v4H3v-4a2 2 0 0 0 0-4ZM15 6v3M15 15v3"/>',
-  wallet: '<path d="M20 8V5H6a3 3 0 0 0 0 6h15v10H6a3 3 0 0 1-3-3V8"/><path d="M21 14h-5v4h5"/>',
-  drop: '<path d="M12 2S5 10 5 15a7 7 0 0 0 14 0c0-5-7-13-7-13Z"/>',
-  pencil: '<path d="m4 16-1 5 5-1L21 7l-4-4ZM14 6l4 4"/>',
-  screen: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
-  plane: '<path d="m3 10 18-7-7 18-3-8ZM11 13l5-5"/>',
-  gift: '<path d="M4 11v10h16V11M12 7v14"/><path d="M3 7h18v4H3ZM12 7C5 7 5 2 8 2c2 0 4 5 4 5Zm0 0c7 0 7-5 4-5-2 0-4 5-4 5Z"/>',
-  transfer: '<path d="M3 7h17l-4-4M20 7l-4 4M21 17H4l4-4M4 17l4 4"/>',
-  circle: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 17h.01"/>',
-  pet: '<ellipse cx="5" cy="9" rx="2" ry="2.5"/><ellipse cx="9.5" cy="4.5" rx="1.8" ry="2.5"/><ellipse cx="15" cy="4.5" rx="1.8" ry="2.5"/><ellipse cx="19.5" cy="9" rx="2" ry="2.5"/><path d="M8 14c-4 3-3 7 0 7 2 0 2-1 4-1s2 1 4 1c3 0 4-4 0-7-1-1-2-2-4-2s-3 1-4 2Z"/>',
-  medicine: '<path d="m4.5 11.5 7-7a5 5 0 0 1 7 7l-7 7a5 5 0 0 1-7-7ZM8 8l7 7"/>',
-  parcel: '<path d="m3 7 9-5 9 5v10l-9 5-9-5ZM3 7l9 5 9-5M12 12v10M7.5 4.5l9 5"/>',
-  beauty: '<path d="M8 12h8v9H8ZM9 12V6l6-3v9M8 16h8"/>',
-  delivery: '<path d="M3 9h18l-3 12H6ZM3 9l3-4h12l3 4M8 5V2M15 5l2-3M9 14h6"/>',
-  apparel: '<path d="m8 3-6 5 4 4 2-2v11h8V10l2 2 4-4-6-5a4 4 0 0 1-8 0Z"/>',
-  milk_bottle: '<path d="M10.5 2c0-1 .7-1.5 1.5-1.5s1.5.5 1.5 1.5v2.5h-3Z"/><path d="M8.5 4.5h7"/><rect x="6" y="4.5" width="12" height="16.5" rx="3"/><path d="M9 11h2M9 15h2"/>',
-};
-
+/** 分类图标的中文名，给图标选择器做提示和读屏用。键和后端 ALLOWED_ICON_KEYS 一一对应。 */
 const CATEGORY_ICON_LABELS = {
-  cup: "杯饮", meal: "餐饮", car: "汽车", bolt: "充电", bag: "购物袋",
-  fruit: "水果", book: "图书", cart: "购物车", train: "公共交通", heart: "健康",
-  home: "住房", phone: "手机", ticket: "票务", wallet: "钱包", drop: "水电燃",
-  pencil: "文具", screen: "数字服务", plane: "旅行", gift: "礼物", transfer: "转账",
-  circle: "其他", pet: "宠物", medicine: "药品", parcel: "包裹物流", beauty: "美容",
-  delivery: "外卖", apparel: "服饰", milk_bottle: "奶瓶",
+  coffee: "咖啡", "fork-knife": "餐饮", cake: "蛋糕", cherries: "水果", basket: "购物篮", tote: "手提袋",
+  package: "包裹", "t-shirt": "服饰", scissors: "理发", couch: "沙发", buildings: "楼宇", drop: "水滴",
+  phone: "电话", cloud: "云服务", devices: "数码", subway: "地铁", car: "汽车", "letter-circle-p": "停车",
+  "charging-station": "充电桩", island: "海岛", tent: "帐篷", heartbeat: "健康", "baby-carriage": "婴儿车",
+  "paw-print": "宠物", student: "学生", "book-open": "书", "pencil-simple": "铅笔", ticket: "门票",
+  clover: "四叶草", club: "扑克", "chart-line-up": "上涨", "credit-card": "信用卡", "money-wavy": "纸币",
+  "arrow-u-up-left": "退回", "arrows-left-right": "转账", handshake: "握手", "hand-heart": "公益",
+  "shield-plus": "保障", "dots-three-circle": "其他", "beer-stein": "啤酒", "game-controller": "游戏",
+  "film-strip": "电影", headphones: "耳机", camera: "相机", "dice-six": "骰子", tooth: "牙科", broom: "保洁",
+  dog: "狗", cat: "猫", bone: "骨头",
 };
 
 function categoryIcon(iconKey) {
-  return `<svg class="category-symbol" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${CATEGORY_ICON_PATHS[iconKey] || CATEGORY_ICON_PATHS.circle}</svg>`;
+  return ph(iconKey in PHOSPHOR_ICONS ? iconKey : "dots-three-circle", "category-symbol");
 }
 
 function setCategoryStatus(message = "", kind = "success") {
@@ -3092,10 +3073,10 @@ function setCategoryStatus(message = "", kind = "success") {
  * 全站的排序控件说同一种话。
  */
 const ORDER_ARROWS = {
-  up: '<path d="M8 12.5v-9M4.5 7 8 3.5 11.5 7" />',
-  down: '<path d="M8 3.5v9M4.5 9 8 12.5 11.5 9" />',
-  // 未激活态：两个方向都还没选，用没有主干的双箭头，别跟上面两个单向箭头撞脸。
-  neutral: '<path d="M4.5 6 8 2.5 11.5 6M4.5 10 8 13.5 11.5 10" />',
+  up: "arrow-up",
+  down: "arrow-down",
+  // 未激活态：两个方向都还没选，用上下双箭头，别跟上面两个单向箭头撞脸。
+  neutral: "caret-up-down",
 };
 
 /** 金额表头的三态排序：date（默认，按时间）→ desc（金额从大到小）→ asc（从小到大）→ date。 */
@@ -3108,7 +3089,7 @@ const AMOUNT_SORT_NEXT_LABEL = {
 };
 
 function orderArrow(direction) {
-  return `<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">${ORDER_ARROWS[direction]}</svg>`;
+  return ph(ORDER_ARROWS[direction]);
 }
 
 function renderCategoryRow(item, { primary = false, index = 0, total = 1 } = {}) {
@@ -3252,7 +3233,7 @@ function renderCategoryEditor() {
   if (!current && !state.categoryDraftNew) {
     $("categoryEditor").innerHTML = `
       <div class="category-editor-empty">
-        <span>${categoryIcon("circle")}</span>
+        <span>${categoryIcon("dots-three-circle")}</span>
         <h3>选择一个分类</h3>
         <p>查看引用情况，或修改名称、图标与颜色。</p>
       </div>
@@ -3263,7 +3244,7 @@ function renderCategoryEditor() {
   const item = current || {
     id: "",
     display_name: "",
-    icon_key: state.categoryAllowedIcons[0] || "circle",
+    icon_key: state.categoryAllowedIcons[0] || "dots-three-circle",
     color_token: leastUsedCategoryColor(),
     is_enabled: true,
     is_primary: false,
@@ -4042,7 +4023,7 @@ function renderProfileReportError(message) {
   $("profileReportPages").innerHTML = `
     <section class="profile-report-state profile-report-error" role="alert">
       <span class="profile-error-mark" aria-hidden="true">
-        <svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="18"/><path d="M24 14v12M24 33v.5"/></svg>
+        ${ph("warning-circle")}
       </span>
       <h3>这次画像没有整理好</h3>
       <p>${escapeHtml(message || "生成过程中遇到问题，请稍后再试。")}</p>
@@ -4179,7 +4160,7 @@ function renderProfileReport(report) {
             <h4>${escapeHtml(wellbeing.headline || "账单正在积累生活线索")}</h4>
             <p>${escapeHtml(wellbeing.summary || "目前的付款记录还不足以形成稳定判断。")}</p>
             <div class="profile-wellbeing-reminder">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.2c4.8-2.7 7.4-6.3 7.4-10.2A4.2 4.2 0 0 0 12 7.2 4.2 4.2 0 0 0 4.6 10c0 3.9 2.6 7.5 7.4 10.2Z"/><path d="M12 7.2v8.4M8.8 11.8 12 15l3.2-3.2"/></svg>
+              ${ph("heart")}
               <div><strong>生活提醒</strong><p>${escapeHtml(wellbeing.reminder || "继续记录，等生活节奏更清晰后再判断。")}</p></div>
             </div>
           </div>
@@ -4219,7 +4200,7 @@ function renderProfileReport(report) {
           </div>
           <button class="profile-cfo-ask" type="button" data-profile-ask>
             让 CFO 继续解读
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" /></svg>
+            ${ph("arrow-right")}
           </button>
         </div>
       </section>
@@ -4633,10 +4614,10 @@ function buildDecisionItems() {
 }
 
 const DECISION_ACTION_ICONS = {
-  ledger: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h9"/></svg>`,
-  evidence: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.5h8L18 9v10.5H6z"/><path d="M13.5 4.5V9H18"/></svg>`,
-  trend: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16.5 9 11l3.4 3.2L20 6.5"/><path d="M15.4 6.5H20V11"/></svg>`,
-  ask: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.2a2.3 2.3 0 0 1-2.3 2.3H8.5L4 21V6.3A2.3 2.3 0 0 1 6.3 4h11.4A2.3 2.3 0 0 1 20 6.3z"/></svg>`,
+  ledger: ph("list-bullets"),
+  evidence: ph("file-text"),
+  trend: ph("chart-line-up"),
+  ask: ph("chat-circle-dots"),
 };
 
 function decisionActionButton(action) {
@@ -4854,7 +4835,7 @@ function renderFilters() {
       </button>
       </div>
       <button class="ledger-category-settings" type="button" data-category-manage aria-label="分类管理：新增、改名、图标与常用排序" title="分类管理：新增、改名、图标与常用排序">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-.6 2.4-2 .9L4 5.6 2 9l1.8 1.7v2.6L2 15l2 3.4 2.4-.7 2 .9L9 21h6l.6-2.4 2-.9 2.4.7 2-3.4-1.8-1.7v-2.6L22 9l-2-3.4-2.4.7-2-.9L15 3Z"/><circle cx="12" cy="12" r="3"/></svg>
+        ${ph("gear-six")}
         <span class="ledger-settings-tip" role="tooltip">分类管理 · 名称、图标与排序</span>
       </button>
     </div>
@@ -4955,7 +4936,7 @@ function renderTransactions() {
     amountSortButton.setAttribute("aria-pressed", sortState !== "date" ? "true" : "false");
     amountSortButton.setAttribute("aria-label", AMOUNT_SORT_NEXT_LABEL[sortState]);
     const icon = amountSortButton.querySelector("svg");
-    if (icon) icon.innerHTML = ORDER_ARROWS[AMOUNT_SORT_ICON[sortState]];
+    if (icon) icon.innerHTML = PHOSPHOR_ICONS[ORDER_ARROWS[AMOUNT_SORT_ICON[sortState]]];
   }
 
   const totalPages = Math.max(1, Math.ceil(transactions.length / ledgerPageSize));
@@ -5012,7 +4993,7 @@ function renderTransactions() {
           </td>
           <td role="cell" class="td-category">
             <span class="txn-chip${pending ? " is-pending" : ""}">
-              <span class="txn-category-icon" style="color:${pending ? "var(--amber-8)" : categoryColor(category)}">${categoryIcon(pending ? "circle" : categoryById(category)?.icon_key)}</span>
+              <span class="txn-category-icon" style="color:${pending ? "var(--amber-8)" : categoryColor(category)}">${categoryIcon(pending ? "dots-three-circle" : categoryById(category)?.icon_key)}</span>
               <span>${escapeHtml(pending ? "识别中" : categoryLabel(category))}</span>
             </span>
           </td>
@@ -5434,7 +5415,7 @@ function renderPhoneLink(settings) {
   const active = Boolean(status.active);
   card.className = `sync-state-card phone-link-card ${active ? "success" : ""}`.trim();
   $("phoneLinkTitle").textContent = active ? `已连接 · 密钥尾号 ${status.last4}` : "还没有连接 iPhone";
-  let meta = "生成上传密钥、装好「记一笔」快捷指令，支付完点一下就能入账，不用再配邮箱。";
+  let meta = "生成上传密钥、装好「记一笔」快捷指令，支付完触发一下就能入账，不用再配邮箱。";
   if (active) {
     const last = settings.last_capture;
     meta = last

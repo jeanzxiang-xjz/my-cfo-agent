@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import "../styles.css";
 import "../vendor/gsap.min.js";
 import App, { CRITICAL_IMAGE_URLS } from "./App.jsx";
+import { PHOSPHOR_ICONS } from "./phosphor-icons.js";
 
 document.body.classList.add("app-loading");
 
@@ -24,6 +25,9 @@ function preloadImage(src) {
     image.src = src;
   });
 }
+
+// legacy-controller.js 不能带 import，图标表从这里交给它
+window.cfoPhosphorIcons = PHOSPHOR_ICONS;
 
 // 开场动画在 motion.js 里等这个 Promise
 window.cfoStaticReady = Promise.all(CRITICAL_IMAGE_URLS.map(preloadImage));

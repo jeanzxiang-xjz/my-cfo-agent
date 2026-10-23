@@ -36,6 +36,15 @@ FIXED_TAXONOMY = {
     "beauty": "美容美发",
     "furniture_home": "家具家装",
     "maternal_child": "母婴亲子",
+    "income": "收入",
+    "refund": "退款",
+    "red_packet": "转账红包",
+    "social_gifts": "人情往来",
+    "insurance": "保险",
+    "charity": "公益捐赠",
+    "electronics": "数码电器",
+    "outdoor_gear": "户外装备",
+    "card_games": "打牌休闲",
     "uncategorized": "未分类",
 }
 CATEGORY_TAXONOMY = FIXED_TAXONOMY

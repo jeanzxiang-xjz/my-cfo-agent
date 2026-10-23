@@ -1159,10 +1159,6 @@ body.is-scrolled .rail {
   stroke-linejoin: round;
 }
 
-.rail-action svg .is-filled {
-  fill: var(--ink-2);
-}
-
 .rail-action:hover {
   color: var(--text-strong);
   background: var(--ink-3);
@@ -1255,19 +1251,13 @@ body.is-scrolled .rail {
 }
 
 .section-title-mark svg {
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.35;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.section-title-mark .section-title-node {
-  fill: var(--jade-8);
-  stroke: var(--ink-2);
-  stroke-width: 1.2;
 }
 
 .section-head h2 {
@@ -1707,17 +1697,13 @@ body.is-scrolled .rail {
 }
 
 .hero-profile-mark svg {
-  width: 50px;
-  height: 50px;
+  width: 32px;
+  height: 32px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.45;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.hero-profile-mark circle:not(:first-child) {
-  fill: var(--ink-2);
 }
 
 .hero-profile-copy {
@@ -2434,12 +2420,12 @@ body.chat-expanded-open {
   box-shadow: var(--edge);
 }
 
-/* 「猜你想问」是唯一带智能感的一档，用玉色菱形标出来；另外两档保持中性。 */
+/* 「猜你想问」是唯一带智能感的一档，用玉色闪光标出来；另外两档保持中性。 */
 .prompt-tab.is-guess svg {
-  width: 9px;
-  height: 9px;
-  fill: var(--jade-6);
-  transition: fill var(--dur-2) var(--ease-out);
+  width: 12px;
+  height: 12px;
+  color: var(--jade-6);
+  transition: color var(--dur-2) var(--ease-out);
 }
 
 .prompt-tab.is-guess.is-active {
@@ -2447,7 +2433,7 @@ body.chat-expanded-open {
 }
 
 .prompt-tab.is-guess.is-active svg {
-  fill: var(--jade-7);
+  color: var(--jade-7);
 }
 
 /* 轨道：一次只显示一档。横向滚动抄 .filter-strip-scroll 那套，
@@ -6525,8 +6511,8 @@ svg.category-symbol {
 }
 
 .profile-error-mark svg {
-  width: 62px;
-  height: 62px;
+  width: 52px;
+  height: 52px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.5;
@@ -8716,6 +8702,158 @@ svg.category-symbol {
   display: none;
 }
 
+/* 触发快捷指令的四种方式：两列卡片，推荐项用翡翠色描边。
+   卡片是纵向 flex，机型说明用 margin-top:auto 压到底部，同一行两张卡的页脚对齐。 */
+.shortcut-triggers {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.shortcut-triggers-head h3 {
+  color: var(--text-strong);
+  font-size: var(--fs-base);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.shortcut-triggers-head p {
+  margin-top: 4px;
+  text-wrap: pretty;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+
+.shortcut-trigger-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shortcut-trigger {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--ink-1);
+}
+
+.shortcut-trigger.is-recommended {
+  border-color: var(--jade-line);
+  background: color-mix(in srgb, var(--ink-1) 80%, var(--jade-bg));
+}
+
+.shortcut-trigger-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+}
+
+.shortcut-trigger-icon {
+  display: grid;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: var(--r-sm);
+  background: var(--ink-3);
+  color: var(--ink-10);
+}
+
+.shortcut-trigger.is-recommended .shortcut-trigger-icon {
+  background: var(--jade-bg);
+  color: var(--jade-8);
+}
+
+.shortcut-trigger-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.shortcut-trigger-head h4 {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-strong);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.shortcut-trigger-badge {
+  flex: none;
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  background: var(--jade-bg);
+  color: var(--jade-8);
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.shortcut-trigger > p {
+  margin-top: 10px;
+  text-wrap: pretty;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+
+/* 设置路径：每一级不拆行，换行只发生在两级之间；最后一级是要选的「记一笔」，用翡翠色点出来 */
+.shortcut-trigger-path,
+.shortcut-trigger > .shortcut-trigger-phrase {
+  margin: var(--sp-3) 0 0;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  background: var(--ink-3);
+  color: var(--ink-10);
+  font-size: var(--fs-micro);
+  line-height: 1.6;
+}
+
+.shortcut-trigger-path {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  list-style: none;
+}
+
+.shortcut-trigger-path li {
+  white-space: nowrap;
+}
+
+.shortcut-trigger-path li + li::before {
+  content: "›";
+  margin-right: 4px;
+  color: var(--ink-7);
+}
+
+.shortcut-trigger-path li:last-child,
+.shortcut-trigger-phrase strong {
+  color: var(--jade-8);
+  font-weight: 600;
+}
+
+.shortcut-trigger > small {
+  margin-top: auto;
+  padding-top: var(--sp-3);
+  color: var(--muted-dim);
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .shortcut-trigger-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .sync-item-list {
   min-height: 120px;
   max-height: 260px;
@@ -9298,8 +9436,8 @@ svg.category-symbol {
   }
 
   .section-title-mark svg {
-    width: 26px;
-    height: 26px;
+    width: 19px;
+    height: 19px;
   }
 
   .stat-row {
@@ -9987,4 +10125,24 @@ svg.category-symbol {
     opacity: 1;
     visibility: visible;
   }
+}
+
+/* ============================== Phosphor 图标 ==============================
+   图形来自 src/phosphor-icons.js（regular 字重，viewBox 256）。线条元素带 class="s"，填充元素带 class="f"。
+   规则直接落在子元素上：各组件给 svg 写的 fill:none / stroke-width 只会被继承，压不过这里。
+   尺寸和颜色仍由各组件的 svg 规则决定。 */
+svg.ph .s {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 16;
+}
+
+svg.ph .r {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+svg.ph .f {
+  fill: currentColor;
+  stroke: none;
 }

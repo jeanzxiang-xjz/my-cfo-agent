@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -24,9 +25,10 @@ class CategoryOrderControlTests(unittest.TestCase):
     def test_arrows_point_one_way_each(self) -> None:
         self.assertIn("const ORDER_ARROWS = {", self.source)
         block = self.source[self.source.index("const ORDER_ARROWS = {") :][:400]
-        up = block[block.index("up:") : block.index("down:")]
-        down = block[block.index("down:") :][:120]
-        self.assertNotEqual(up.split("'")[1], down.split("'")[1], "上下两枚不能是同一段路径")
+        # 值是 Phosphor 图标名（"arrow-up" / "arrow-down"），上下两枚必须是不同的单向箭头
+        up = re.search(r"up:\s*[\"']([^\"']+)", block).group(1)
+        down = re.search(r"down:\s*[\"']([^\"']+)", block).group(1)
+        self.assertNotEqual(up, down, "上下两枚不能是同一个图标")
 
     def test_reorder_no_longer_borrows_the_category_glyph(self) -> None:
         row = self.source[self.source.index("function renderCategoryRow(") :][:2400]

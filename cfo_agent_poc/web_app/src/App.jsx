@@ -1,5 +1,6 @@
 import openingImage from "../assets/opening-cfo-illustration.webp";
 import { ownerName } from "./owner.js";
+import { PHOSPHOR_ICONS } from "./phosphor-icons.js";
 
 // 首屏静态骨架。所有 id / data-* 属性都是 legacy-controller.js 的渲染契约，
 // 改名前请同步检查 src/legacy-controller.js。
@@ -89,6 +90,19 @@ function OpeningOverlay() {
   );
 }
 
+/** Phosphor 图标（regular 字重）。图形在 phosphor-icons.js，线宽和填充在 styles.css 的 svg.ph 段。 */
+function Ph({ name, className = "" }) {
+  return (
+    <svg
+      className={className ? `ph ${className}` : "ph"}
+      viewBox="0 0 256 256"
+      aria-hidden="true"
+      focusable="false"
+      dangerouslySetInnerHTML={{ __html: PHOSPHOR_ICONS[name] }}
+    />
+  );
+}
+
 function BrandMark() {
   return (
     <svg className="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
@@ -148,48 +162,30 @@ function TopRail() {
             aria-expanded="false"
             tabIndex={-1}
           >
-            <svg className="period-btn-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <rect x="2.3" y="3.5" width="11.4" height="10.2" rx="2" />
-              <path d="M2.3 6.7h11.4M5.7 2.3v2.4M10.3 2.3v2.4" />
-            </svg>
+            <Ph name="calendar-dots" className="period-btn-icon" />
             <span className="period-btn-label" id="customPeriodLabel">
               自定义
             </span>
           </button>
           <button id="periodClear" className="period-clear" type="button" aria-label="清除自定义区间，回到预设周期" hidden>
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path d="M5 5l6 6M11 5l-6 6" />
-            </svg>
+            <Ph name="x-circle" />
           </button>
         </div>
 
         <div className="rail-actions">
           <button id="openTrendModal" className="rail-action" type="button" aria-label="现金流趋势" title="现金流趋势">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path d="M1.8 11.2 5.6 7l2.8 2.6L14.2 3.4" />
-              <path d="M10.6 3.4h3.6v3.6" />
-            </svg>
+            <Ph name="chart-line-up" />
             <span className="rail-action-text">趋势</span>
           </button>
           <button id="openCaptureModal" className="rail-action" type="button" aria-label="记一笔：连接 iPhone 或上传截图" title="记一笔">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <rect x="4.2" y="1.8" width="7.6" height="12.4" rx="1.8" />
-              <path d="M8 5.6v4.4M5.8 7.8h4.4" />
-            </svg>
+            <Ph name="plus-circle" />
             <span className="rail-action-text">记一笔</span>
           </button>
           <button id="openBudgetSettings" className="rail-action rail-action-icon" type="button" aria-label="预算配置" title="预算配置">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path d="M3 4.2h10M3 8h10M3 11.8h10" />
-              <circle cx="6.2" cy="4.2" r="1.7" className="is-filled" />
-              <circle cx="10.4" cy="11.8" r="1.7" className="is-filled" />
-            </svg>
+            <Ph name="sliders-horizontal" />
           </button>
           <button id="openAccountModal" className="rail-action rail-action-icon" type="button" aria-label="账户" title="账户">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <circle cx="8" cy="5.6" r="2.7" />
-              <path d="M2.8 13.6c.8-2.4 2.8-3.7 5.2-3.7s4.4 1.3 5.2 3.7" />
-            </svg>
+            <Ph name="user-circle" />
           </button>
         </div>
       </div>
@@ -243,9 +239,7 @@ function OverviewHero() {
               <span className="micro-label">现金流</span>
               <span className="hero-spark-cta">
                 查看趋势
-                <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                  <path d="M6 3.5 10.5 8 6 12.5" />
-                </svg>
+                <Ph name="caret-right" />
               </span>
             </span>
             {/*
@@ -308,13 +302,7 @@ function OverviewHero() {
 
           <span id="heroProfileContent" className="hero-profile-content" hidden>
             <span className="hero-profile-mark" aria-hidden="true">
-              <svg viewBox="0 0 48 48" focusable="false">
-                <circle cx="24" cy="24" r="18" />
-                <path d="M14 29.5c4.2-8.2 8.2-4.6 11.2-10.8 2.4-4.8 5.5-2.5 8.8-5.2" />
-                <circle cx="14" cy="29.5" r="2.2" />
-                <circle cx="25.2" cy="18.7" r="2.2" />
-                <circle cx="34" cy="13.5" r="2.2" />
-              </svg>
+              <Ph name="sparkle" />
             </span>
             <span className="hero-profile-copy">
               <strong>你的钱，藏着一种生活流派</strong>
@@ -322,9 +310,7 @@ function OverviewHero() {
             </span>
             <span className="hero-profile-action">
               <span id="heroProfileActionLabel">生成画像</span>
-              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                <path d="M6 3.5 10.5 8 6 12.5" />
-              </svg>
+              <Ph name="caret-right" />
             </span>
           </span>
         </button>
@@ -339,26 +325,17 @@ function OverviewHero() {
             </div>
             <div className="chat-head-actions">
               <button id="copyLastAnswerButton" className="chat-icon-action" type="button" aria-label="复制最近一条 CFO 回答" title="复制最近回答" hidden>
-                <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                  <rect x="5.2" y="4.2" width="7.2" height="8.2" rx="1.2" />
-                  <path d="M9.2 4.2V3.4A1.4 1.4 0 0 0 7.8 2H4.2A1.4 1.4 0 0 0 2.8 3.4v6.8a1.4 1.4 0 0 0 1.4 1.4h1" />
-                </svg>
+                <Ph name="copy" />
               </button>
               <button id="clearChatButton" className="chat-icon-action" type="button" aria-label="清空当前会话" title="清空会话">
-                <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                  <path d="M2.6 4.8h10.8M5.3 4.8V3h5.4v1.8M4 4.8l.6 8.4h6.8l.6-8.4M6.6 7v4.2M9.4 7v4.2" />
-                </svg>
+                <Ph name="trash" />
               </button>
               <button id="expandChatButton" className="chat-mode-action" type="button" aria-label="展开对话" aria-expanded="false" aria-controls="heroChat" title="展开对话">
-                <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                  <path d="M2.8 6V3.2H5.6M10.4 3.2h2.8V6M13.2 10v2.8h-2.8M5.6 12.8H2.8V10" />
-                </svg>
+                <Ph name="corners-out" />
                 <span>展开对话</span>
               </button>
               <button id="closeChatExpandButton" className="chat-mode-action" type="button" aria-label="退出展开对话" title="退出展开对话" hidden>
-                <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                  <path d="M5.6 2.8H2.8v2.8M10.4 2.8h2.8v2.8M13.2 10.4v2.8h-2.8M2.8 10.4v2.8h2.8" />
-                </svg>
+                <Ph name="corners-in" />
                 <span>退出展开</span>
               </button>
             </div>
@@ -371,9 +348,7 @@ function OverviewHero() {
         <div className="chat-message-stage">
           <div id="chatMessages" className="chat-messages" role="log" aria-live="polite" aria-label="对话记录" tabIndex={0} />
           <button id="chatLatestButton" className="chat-latest-button" type="button" title="回到最新回答" hidden>
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path d="M8 2.5v9M4.8 8.4 8 11.6l3.2-3.2M3 13.5h10" />
-            </svg>
+            <Ph name="arrow-line-down" />
             <span>回到最新</span>
           </button>
         </div>
@@ -393,9 +368,7 @@ function OverviewHero() {
                 aria-selected="true"
                 aria-controls="promptTrackGuess"
               >
-                <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-                  <path d="M6 1.4 10.3 6 6 10.6 1.7 6Z" />
-                </svg>
+                <Ph name="sparkle" />
                 <span className="prompt-tab-text">猜你想问</span>
               </button>
               <button
@@ -477,11 +450,7 @@ function OverviewHero() {
 
             <div className="prompt-rail-action">
               <button id="rerollPrompts" className="rail-icon-button" type="button" aria-label="换一批问题" title="换一批">
-                <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                  <path d="M13.4 7.1A5.5 5.5 0 0 0 3.6 4.7" />
-                  <path d="M2.6 8.9a5.5 5.5 0 0 0 9.8 2.4" />
-                  <path d="M13.7 2.8v3.7h-3.7M2.3 13.2V9.5H6" />
-                </svg>
+                <Ph name="arrows-clockwise" />
               </button>
               <button
                 id="managePrompts"
@@ -492,9 +461,7 @@ function OverviewHero() {
                 title="管理我的常问"
                 hidden
               >
-                <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                  <path d="M8 2.4v11.2M2.4 8h11.2" />
-                </svg>
+                <Ph name="plus" />
               </button>
             </div>
           </div>
@@ -515,9 +482,7 @@ function OverviewHero() {
               />
               <button type="submit" className="chat-send" data-label-idle="发送" data-label-busy="生成中">
                 <span className="chat-send-text">发送</span>
-                <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                  <path d="M2.6 8h9.6M8.4 4.2 12.2 8l-3.8 3.8" />
-                </svg>
+                <Ph name="arrow-right" />
               </button>
             </div>
             <p className="chat-hint" id="chatHint">
@@ -538,10 +503,7 @@ function IntelligencePanel() {
         <div className="section-head-copy">
           <div className="section-title-line">
             <span className="section-title-mark" aria-hidden="true">
-              <svg viewBox="0 0 32 32" focusable="false">
-                <path d="M5.5 16s3.8-5.8 10.5-5.8S26.5 16 26.5 16 22.7 21.8 16 21.8 5.5 16 5.5 16Z" />
-                <circle className="section-title-node" cx="16" cy="16" r="3.1" />
-              </svg>
+              <Ph name="eye" />
             </span>
             <h2 id="signalsTitle">关键观察</h2>
           </div>
@@ -605,10 +567,7 @@ function LedgerPanel() {
         <div className="section-head-copy">
           <div className="section-title-line">
             <span className="section-title-mark" aria-hidden="true">
-              <svg viewBox="0 0 32 32" focusable="false">
-                <path d="M9 6.5h10l4 4v15l-2.6-1.9-2.4 1.9-2.4-1.9-2.4 1.9-2.4-1.9L9 25.5v-19Z" />
-                <path d="M19 6.5v4h4M12.5 15h7M12.5 19h5" />
-              </svg>
+              <Ph name="receipt" />
             </span>
             <h2 id="ledgerTitle">可追溯交易</h2>
           </div>
@@ -639,9 +598,7 @@ function LedgerPanel() {
                   aria-label="按金额从大到小排序"
                 >
                   <span>金额</span>
-                  <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                    <path d="M4.5 6 8 2.5l3.5 3.5M4.5 10 8 13.5l3.5-3.5" />
-                  </svg>
+                  <Ph name="caret-up-down" />
                 </button>
               </th>
             </tr>
@@ -695,9 +652,7 @@ function TrendModal() {
             </button>
           </div>
           <button className="modal-close" type="button" data-modal-close="trendModal" aria-label="关闭趋势弹窗">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6" />
-            </svg>
+            <Ph name="x" />
           </button>
         </div>
 
@@ -774,9 +729,7 @@ function CaptureModal() {
             <p>支付后在 iPhone 上点一下快捷指令，账单截图直接传进你的账本。</p>
           </div>
           <button className="modal-close" type="button" data-modal-close="captureModal" aria-label="关闭记一笔">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6" />
-            </svg>
+            <Ph name="x" />
           </button>
         </div>
 
@@ -787,13 +740,11 @@ function CaptureModal() {
         <div className="sync-body">
           <aside className="sync-guidance" aria-labelledby="captureGuidanceTitle">
             <span className="sync-guidance-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false">
-                <path d="M6.5 4.5h11v15h-11zM9 8h6M9 11.5h6M9 15h3.5" />
-              </svg>
+              <Ph name="device-mobile" />
             </span>
             <div>
               <strong id="captureGuidanceTitle">截图前，先打开账单详情页</strong>
-              <p>确认金额、支付时间和商户都完整显示在屏幕上，再点快捷指令。</p>
+              <p>确认金额、支付时间和商户都完整显示在屏幕上，再触发快捷指令。</p>
             </div>
           </aside>
 
@@ -813,7 +764,7 @@ function CaptureModal() {
             <ol className="phone-link-steps">
               <li>生成上传密钥并复制</li>
               <li>安装「记一笔」快捷指令，按提示粘贴密钥</li>
-              <li>支付后打开账单详情页，点一下「记一笔」</li>
+              <li>支付后点开账单详情页，触发「记一笔」快捷指令即可</li>
             </ol>
 
             <div className="phone-link-url">
@@ -835,6 +786,87 @@ function CaptureModal() {
                 停用密钥
               </button>
             </div>
+          </section>
+
+          {/* 触发方式：很多人装好快捷指令后不知道怎么"点"它，这里列出四种常用入口 */}
+          <section className="shortcut-triggers" aria-labelledby="shortcutTriggersTitle">
+            <div className="shortcut-triggers-head">
+              <h3 id="shortcutTriggersTitle">怎么触发快捷指令？</h3>
+              <p>挑一种顺手的方式设置一次，以后停在账单详情页，一触即记。</p>
+            </div>
+
+            <ul className="shortcut-trigger-list">
+              <li className="shortcut-trigger is-recommended">
+                <div className="shortcut-trigger-head">
+                  <span className="shortcut-trigger-icon">
+                    <Ph name="vibrate" />
+                  </span>
+                  <h4>按住左侧操作按钮</h4>
+                  <span className="shortcut-trigger-badge">推荐</span>
+                </div>
+                <p>单手就能完成，不用离开账单页。</p>
+                <ol className="shortcut-trigger-path" aria-label="设置路径">
+                  <li>设置</li>
+                  <li>操作按钮</li>
+                  <li>快捷指令</li>
+                  <li>记一笔</li>
+                </ol>
+                <small>iPhone 15 Pro 及更新机型</small>
+              </li>
+
+              <li className="shortcut-trigger">
+                <div className="shortcut-trigger-head">
+                  <span className="shortcut-trigger-icon">
+                    <Ph name="hand-tap" />
+                  </span>
+                  <h4>轻点手机背面三下</h4>
+                </div>
+                <p>不占按键，没有操作按钮的机型也能用。</p>
+                <ol className="shortcut-trigger-path" aria-label="设置路径">
+                  <li>设置</li>
+                  <li>无障碍</li>
+                  <li>触控</li>
+                  <li>轻点背面</li>
+                  <li>轻点三下</li>
+                  <li>记一笔</li>
+                </ol>
+                <small>iPhone 8 及更新机型</small>
+              </li>
+
+              <li className="shortcut-trigger">
+                <div className="shortcut-trigger-head">
+                  <span className="shortcut-trigger-icon">
+                    <Ph name="record" />
+                  </span>
+                  <h4>长按辅助触控小圆点</h4>
+                </div>
+                <p>屏幕上常驻一个悬浮按钮，随手一按就触发。</p>
+                <ol className="shortcut-trigger-path" aria-label="设置路径">
+                  <li>设置</li>
+                  <li>无障碍</li>
+                  <li>触控</li>
+                  <li>辅助触控</li>
+                  <li>自定操作</li>
+                  <li>长按</li>
+                  <li>记一笔</li>
+                </ol>
+                <small>小圆点不会出现在截图里</small>
+              </li>
+
+              <li className="shortcut-trigger">
+                <div className="shortcut-trigger-head">
+                  <span className="shortcut-trigger-icon">
+                    <Ph name="waveform" />
+                  </span>
+                  <h4>对 Siri 说「记一笔」</h4>
+                </div>
+                <p>腾不出手时用，快捷指令的名字就是口令。</p>
+                <p className="shortcut-trigger-phrase">
+                  嘿 Siri，<strong>记一笔</strong>
+                </p>
+                <small>无需额外设置，开启 Siri 即可</small>
+              </li>
+            </ul>
           </section>
 
           <div className="sync-log-panel">
@@ -867,9 +899,7 @@ function BudgetModal() {
             <p>日、周、月预算会同时用于趋势弹窗和 CFO Agent 的对话上下文。</p>
           </div>
           <button className="modal-close" type="button" data-modal-close="budgetModal" aria-label="关闭预算配置">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6" />
-            </svg>
+            <Ph name="x" />
           </button>
         </div>
 
@@ -928,9 +958,7 @@ function AccountModal() {
             <p id="accountSubtitle">你的账本只属于这个账户，其他人看不到。</p>
           </div>
           <button className="modal-close" type="button" data-modal-close="accountModal" aria-label="关闭账户">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6" />
-            </svg>
+            <Ph name="x" />
           </button>
         </div>
 
@@ -1015,9 +1043,7 @@ function RangePickerModal() {
             <p>选定后，首屏数字、关键观察、支出去向、账本与提问都按这段时间重算。</p>
           </div>
           <button className="modal-close" type="button" data-modal-close="rangeModal" aria-label="关闭时间区间选择">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6" />
-            </svg>
+            <Ph name="x" />
           </button>
         </div>
 
@@ -1027,15 +1053,11 @@ function RangePickerModal() {
           <div className="range-calendar">
             <div className="range-calendar-head">
               <button id="rangePrevMonth" className="range-nav" type="button" aria-label="上一个月">
-                <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                  <path d="M10 3.2 5.2 8l4.8 4.8" />
-                </svg>
+                <Ph name="caret-left" />
               </button>
               <div className="range-month-titles" id="rangeMonthTitles" aria-live="polite" />
               <button id="rangeNextMonth" className="range-nav" type="button" aria-label="下一个月">
-                <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                  <path d="M6 3.2 10.8 8 6 12.8" />
-                </svg>
+                <Ph name="caret-right" />
               </button>
             </div>
             <div className="range-months" id="rangeMonths" />
@@ -1069,9 +1091,7 @@ function EvidenceDrawer() {
             <p id="evidenceSubtitle">--</p>
           </div>
           <button className="modal-close" type="button" data-drawer-close aria-label="关闭交易证据">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6" />
-            </svg>
+            <Ph name="x" />
           </button>
         </div>
         <div id="evidenceContent" className="evidence-content" aria-live="polite">
@@ -1088,7 +1108,7 @@ function CategoryManagementModal() {
       <section className="modal-shell category-modal" role="dialog" aria-modal="true" aria-labelledby="categoryModalTitle" tabIndex={-1}>
         <header className="category-modal-header">
           <button className="category-mobile-back" type="button" data-category-back aria-label="返回分类列表">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M10.5 3.5 6 8l4.5 4.5" /></svg>
+            <Ph name="caret-left" />
           </button>
           <div className="category-modal-heading">
             <h2 id="categoryModalTitle">分类管理</h2>
@@ -1096,13 +1116,11 @@ function CategoryManagementModal() {
           </div>
           <div className="category-modal-actions">
             <button id="newCategoryButton" className="btn btn-primary btn-sm" type="button">
-              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10" /></svg>
+              <Ph name="plus" />
               新建分类
             </button>
             <button className="modal-close" type="button" data-modal-close="categoryModal" aria-label="关闭分类管理">
-              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                <path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6" />
-              </svg>
+              <Ph name="x" />
             </button>
           </div>
         </header>
@@ -1114,10 +1132,7 @@ function CategoryManagementModal() {
         <div className="category-workspace">
           <div className="category-list-pane" id="categoryListPane">
             <div className="category-search">
-              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                <circle cx="7" cy="7" r="4.5" />
-                <path d="m13 13-3.3-3.3" />
-              </svg>
+              <Ph name="magnifying-glass" />
               <input
                 id="categorySearchInput"
                 type="search"
@@ -1147,9 +1162,7 @@ function CustomPromptModal() {
             <p id="promptModalMeta">正在读取</p>
           </div>
           <button className="modal-close" type="button" data-modal-close="promptModal" aria-label="关闭我的常问">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6" />
-            </svg>
+            <Ph name="x" />
           </button>
         </header>
         <div id="promptManager" className="prompt-manager" />
@@ -1172,18 +1185,11 @@ function ProfileReportModal() {
           </div>
           <div className="profile-report-actions">
             <button id="refreshProfileReport" className="profile-report-refresh" type="button" hidden>
-              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                <path d="M13.5 7.2A5.6 5.6 0 0 0 3.1 5.3" />
-                <path d="M2.7 2.6v3.5h3.5" />
-                <path d="M2.5 8.8a5.6 5.6 0 0 0 10.4 1.9" />
-                <path d="M13.3 13.4V9.9H9.8" />
-              </svg>
+              <Ph name="arrows-clockwise" />
               重新生成
             </button>
             <button className="modal-close" type="button" data-modal-close="profileReportModal" aria-label="关闭账单人格报告">
-              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                <path d="M4.4 4.4 11.6 11.6M11.6 4.4 4.4 11.6" />
-              </svg>
+              <Ph name="x" />
             </button>
           </div>
         </header>
@@ -1199,11 +1205,11 @@ function ProfileReportModal() {
 
         <footer id="profileReportNavigation" className="profile-report-navigation" hidden>
           <button id="profileReportPrev" className="profile-report-nav-button" type="button" aria-label="上一页">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M10 3.5 5.5 8 10 12.5" /></svg>
+            <Ph name="caret-left" />
           </button>
           <div id="profileReportDots" className="profile-report-dots" role="tablist" aria-label="报告章节" />
           <button id="profileReportNext" className="profile-report-nav-button" type="button" aria-label="下一页">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" /></svg>
+            <Ph name="caret-right" />
           </button>
         </footer>
       </section>

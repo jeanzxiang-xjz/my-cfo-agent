@@ -8,11 +8,17 @@ from pathlib import Path
 
 MAX_PRIMARY_CATEGORIES = 5
 RESERVED_CATEGORY_ID = "uncategorized"
+# 图标用 Phosphor 的图标名（前端 src/phosphor-icons.js 里有对应图形）。
+# 顺序就是分类管理里图标选择器的顺序：先各分类的默认图标，再是给自建分类备用的几个。
 ALLOWED_ICON_KEYS = (
-    "cup", "meal", "car", "bolt", "bag", "fruit", "book", "cart",
-    "train", "heart", "home", "phone", "ticket", "wallet", "drop",
-    "pencil", "screen", "plane", "gift", "transfer", "circle", "pet",
-    "medicine", "parcel", "beauty", "delivery", "apparel", "milk_bottle",
+    "coffee", "fork-knife", "cake", "cherries", "basket", "tote", "package", "t-shirt",
+    "scissors", "couch", "buildings", "drop", "phone", "cloud", "devices",
+    "subway", "car", "letter-circle-p", "charging-station", "island", "tent",
+    "heartbeat", "baby-carriage", "paw-print", "student", "book-open", "pencil-simple",
+    "ticket", "clover", "club", "chart-line-up", "credit-card", "money-wavy", "arrow-u-up-left",
+    "arrows-left-right", "handshake", "hand-heart", "shield-plus", "dots-three-circle",
+    "beer-stein", "game-controller", "film-strip", "headphones", "camera", "dice-six",
+    "tooth", "broom", "dog", "cat", "bone",
 )
 # Display order for the color picker: grouped by hue (ascending around the color
 # wheel), light/base/dark together within each hue, neutral last. This keeps
@@ -32,40 +38,110 @@ ALLOWED_COLOR_TOKENS = (
 # The immutable ids and system names are classification semantics. display_name is
 # the user-facing layer and is only used to seed a new catalog.
 DEFAULT_CATEGORIES = (
-    ("coffee_tea", "咖啡茶饮", "咖啡/奶茶", "cup", "cat-2"),
-    ("food_delivery", "餐饮外卖", "外卖/餐饮", "meal", "cat-10"),
-    ("parking", "停车缴费", "停车交通", "car", "cat-9"),
-    ("car_charging", "车辆充电", "车辆充电", "bolt", "cat-12"),
+    ("coffee_tea", "咖啡茶饮", "咖啡/奶茶", "coffee", "cat-2"),
+    ("food_delivery", "餐饮外卖", "外卖/餐饮", "fork-knife", "cat-10"),
+    ("parking", "停车缴费", "停车交通", "letter-circle-p", "cat-9"),
+    ("car_charging", "车辆充电", "加油充电", "charging-station", "cat-12"),
     ("auto", "爱车养车", "爱车养车", "car", "cat-16"),
-    ("groceries", "超市便利", "超市便利", "bag", "cat-11"),
-    ("fruit", "水果", "水果鲜果", "fruit", "cat-3"),
-    ("bakery", "烘焙", "烘焙面包", "meal", "cat-17"),
-    ("education", "证券考试", "教育考试", "book", "cat-14"),
-    ("books", "图书", "图书书店", "book", "cat-21"),
-    ("ecommerce", "网购", "网购", "cart", "cat-20"),
-    ("transport", "交通出行", "交通", "train", "cat-1"),
-    ("healthcare", "医疗保健", "医疗保健", "heart", "cat-3"),
-    ("investment", "理财", "投资理财", "wallet", "cat-6"),
-    ("property", "物业服务", "物业生活", "home", "cat-19"),
+    ("groceries", "超市便利", "超市便利", "basket", "cat-11"),
+    ("fruit", "水果", "水果生鲜", "cherries", "cat-3"),
+    ("bakery", "烘焙", "烘焙面包", "cake", "cat-17"),
+    ("education", "证券考试", "教育考试", "student", "cat-14"),
+    ("books", "图书", "图书书店", "book-open", "cat-21"),
+    ("ecommerce", "网购", "网购", "package", "cat-20"),
+    ("transport", "交通出行", "交通", "subway", "cat-1"),
+    ("healthcare", "医疗保健", "医疗保健", "heartbeat", "cat-3"),
+    ("investment", "理财", "投资理财", "chart-line-up", "cat-6"),
+    ("property", "物业服务", "物业生活", "buildings", "cat-19"),
     ("telecom", "通信充值", "通信充值", "phone", "cat-9"),
     ("entertainment", "演出票务", "演出票务", "ticket", "cat-7"),
-    ("credit_repayment", "信用借还", "信用借还", "wallet", "cat-14"),
+    ("credit_repayment", "信用借还", "信用借还", "credit-card", "cat-14"),
     ("utilities", "水电燃缴费", "水电燃缴费", "drop", "cat-4"),
-    ("stationery", "文具用品", "文具用品", "pencil", "cat-11"),
-    ("digital_services", "数字服务", "数字服务", "screen", "cat-16"),
-    ("general_shopping", "日常购物", "日常购物", "bag", "cat-18"),
-    ("leisure_travel", "休闲旅行", "旅行休闲", "plane", "cat-15"),
-    ("lottery", "彩票", "彩票", "gift", "cat-7"),
-    ("personal_transfer", "个人转账", "个人转账", "transfer", "cat-21"),
-    ("apparel", "服饰装扮", "服饰穿搭", "apparel", "cat-5"),
-    ("pet", "宠物", "宠物", "pet", "cat-20"),
-    ("beauty", "美容美发", "美容美发", "beauty", "cat-13"),
-    ("furniture_home", "家具家装", "家具家装", "home", "cat-12"),
-    ("maternal_child", "母婴亲子", "母婴亲子", "milk_bottle", "cat-13"),
-    ("uncategorized", "未分类", "未分类", "circle", "cat-8"),
+    ("stationery", "文具用品", "文具用品", "pencil-simple", "cat-11"),
+    ("digital_services", "数字服务", "数字服务", "cloud", "cat-16"),
+    ("general_shopping", "日常购物", "日常购物", "tote", "cat-18"),
+    ("leisure_travel", "休闲旅行", "旅行休闲", "island", "cat-15"),
+    ("lottery", "彩票", "彩票", "clover", "cat-7"),
+    ("personal_transfer", "个人转账", "个人转账", "arrows-left-right", "cat-21"),
+    ("apparel", "服饰装扮", "服饰穿搭", "t-shirt", "cat-5"),
+    ("pet", "宠物", "宠物", "paw-print", "cat-20"),
+    ("beauty", "美容美发", "美容美发", "scissors", "cat-13"),
+    ("furniture_home", "家具家装", "家具家装", "couch", "cat-12"),
+    ("maternal_child", "母婴亲子", "母婴亲子", "baby-carriage", "cat-13"),
+    ("income", "收入", "收入", "money-wavy", "cat-11"),
+    ("refund", "退款", "退款", "arrow-u-up-left", "cat-12"),
+    ("red_packet", "转账红包", "转账红包", "arrows-left-right", "cat-15"),
+    ("social_gifts", "人情往来", "人情往来", "handshake", "cat-22"),
+    ("insurance", "保险", "保险", "shield-plus", "cat-1"),
+    ("charity", "公益捐赠", "公益捐赠", "hand-heart", "cat-5"),
+    ("electronics", "数码电器", "数码电器", "devices", "cat-9"),
+    ("outdoor_gear", "户外装备", "户外装备", "tent", "cat-18"),
+    ("card_games", "打牌休闲", "打牌休闲", "club", "cat-6"),
+    ("uncategorized", "未分类", "未分类", "dots-three-circle", "cat-8"),
 )
 
 DEFAULT_PRIMARY_IDS = ("books", "food_delivery", "groceries", "property", "car_charging")
+
+# 换成 Phosphor 之前的图标名 → 新图标名。已有账户目录里存的还是旧名：系统分类停在旧默认图标上的
+# 换成新默认图标（见 DEFAULT_CATEGORIES），其余（自建分类、用户改过的）按这张表就近换。
+LEGACY_ICON_KEYS = {
+    "cup": "coffee", "meal": "fork-knife", "car": "car", "bolt": "charging-station", "bag": "tote",
+    "fruit": "cherries", "book": "book-open", "cart": "package", "train": "subway", "heart": "heartbeat",
+    "home": "couch", "phone": "phone", "ticket": "ticket", "wallet": "credit-card", "drop": "drop",
+    "pencil": "pencil-simple", "screen": "cloud", "plane": "island", "gift": "handshake",
+    "transfer": "arrows-left-right", "circle": "dots-three-circle", "pet": "paw-print", "medicine": "heartbeat",
+    "parcel": "package", "beauty": "scissors", "delivery": "fork-knife", "apparel": "t-shirt",
+    "milk_bottle": "baby-carriage", "placeholder": "dots-three-circle",
+}
+LEGACY_DEFAULT_ICONS = {
+    "coffee_tea": "cup",
+    "food_delivery": "meal",
+    "parking": "car",
+    "car_charging": "bolt",
+    "auto": "car",
+    "groceries": "bag",
+    "fruit": "fruit",
+    "bakery": "meal",
+    "education": "book",
+    "books": "book",
+    "ecommerce": "cart",
+    "transport": "train",
+    "healthcare": "heart",
+    "investment": "wallet",
+    "property": "home",
+    "telecom": "phone",
+    "entertainment": "ticket",
+    "credit_repayment": "wallet",
+    "utilities": "drop",
+    "stationery": "pencil",
+    "digital_services": "screen",
+    "general_shopping": "bag",
+    "leisure_travel": "plane",
+    "lottery": "gift",
+    "personal_transfer": "transfer",
+    "apparel": "apparel",
+    "pet": "pet",
+    "beauty": "beauty",
+    "furniture_home": "home",
+    "maternal_child": "milk_bottle",
+    "income": "placeholder",
+    "refund": "placeholder",
+    "red_packet": "placeholder",
+    "social_gifts": "placeholder",
+    "insurance": "placeholder",
+    "charity": "placeholder",
+    "electronics": "placeholder",
+    "outdoor_gear": "placeholder",
+    "card_games": "placeholder",
+    "uncategorized": "circle",
+}
+
+# 系统分类改过默认展示名。已有账户的目录是 insert or ignore 种下的，不会跟着变，
+# 这里把还停在旧默认名上的改过去；用户自己改过名的不动。
+RENAMED_DEFAULT_NAMES = (
+    ("fruit", "水果鲜果", "水果生鲜"),
+    ("car_charging", "车辆充电", "加油充电"),
+)
 
 
 class CategoryError(ValueError):
@@ -124,6 +200,49 @@ def ensure_category_tables(conn: sqlite3.Connection) -> None:
             """,
             (category_id, display_name, system_name, icon_key, color_token, primary_order, now, now),
         )
+    renamed = 0
+    for category_id, old_name, new_name in RENAMED_DEFAULT_NAMES:
+        try:
+            renamed += conn.execute(
+                "update category_catalog set display_name = ?, updated_at = ? where id = ? and display_name = ?",
+                (new_name, now, category_id, old_name),
+            ).rowcount
+        except sqlite3.IntegrityError:
+            # 用户已经自建了同名分类，保留旧名，不抢名字
+            pass
+    migrated = _migrate_legacy_icons(conn, now)
+    if renamed or migrated:
+        _bump_version(conn, now)
+
+
+def _migrate_legacy_icons(conn: sqlite3.Connection, now: str) -> int:
+    """
+    换成 Phosphor 图标那次的迁移只跑一遍（记在 category_catalog_migrations 里）：
+    系统分类还停在旧默认图标上的，换成新默认图标；其它旧图标名按 LEGACY_ICON_KEYS 就近换。
+    只跑一遍是因为旧名和新名有重叠（car、phone、ticket），用户之后主动选回 car 不能又被改掉。
+    """
+    conn.execute("create table if not exists category_catalog_migrations (name text primary key, applied_at text not null)")
+    if conn.execute("select 1 from category_catalog_migrations where name = 'phosphor_icons'").fetchone():
+        return 0
+    defaults = {category_id: icon_key for category_id, _sys, _name, icon_key, _color in DEFAULT_CATEGORIES}
+    changed = 0
+    for category_id, icon_key, is_system in conn.execute(
+        "select id, icon_key, is_system from category_catalog"
+    ).fetchall():
+        if is_system and category_id in defaults and LEGACY_DEFAULT_ICONS.get(category_id) == icon_key:
+            replacement = defaults[category_id]
+        elif icon_key not in ALLOWED_ICON_KEYS:
+            replacement = LEGACY_ICON_KEYS.get(icon_key, "dots-three-circle")
+        else:
+            continue
+        if replacement != icon_key:
+            conn.execute(
+                "update category_catalog set icon_key = ?, updated_at = ? where id = ?",
+                (replacement, now, category_id),
+            )
+            changed += 1
+    conn.execute("insert into category_catalog_migrations (name, applied_at) values ('phosphor_icons', ?)", (now,))
+    return changed
 
 
 def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
@@ -258,7 +377,7 @@ def _clean_name(value: object) -> str:
 
 
 def _validate_appearance(icon_key: object, color_token: object) -> tuple[str, str]:
-    icon = str(icon_key or "circle")
+    icon = str(icon_key or "dots-three-circle")
     color = str(color_token or "cat-1")
     if icon not in ALLOWED_ICON_KEYS:
         raise CategoryError("这个图标不在可选范围里。", code="invalid_icon")
