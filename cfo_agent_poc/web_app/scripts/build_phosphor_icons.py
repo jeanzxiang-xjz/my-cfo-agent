@@ -34,7 +34,7 @@ ICON_NAMES = sorted({
     "hand-tap", "record",
     # 记一笔弹窗
     "link", "download-simple", "key", "prohibit", "microphone", "upload-simple",
-    "check-circle", "hourglass",
+    "check-circle", "hourglass", "check",
 })
 
 # Phosphor 里没有、按同一规格手绘的图标（256 网格、16 线宽、圆头圆角，class 规则同上）。

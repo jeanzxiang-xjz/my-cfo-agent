@@ -8510,51 +8510,6 @@ svg.category-symbol {
   overflow-y: auto;
 }
 
-.sync-guidance {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--sp-3);
-  padding: var(--sp-4);
-  border: 1px solid var(--amber-6);
-  border-radius: var(--r-md);
-  background: var(--amber-bg);
-}
-
-.sync-guidance-icon {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border-radius: var(--r-sm);
-  background: rgba(240, 187, 109, 0.12);
-  color: var(--amber-8);
-}
-
-.sync-guidance-icon svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.sync-guidance strong {
-  display: block;
-  color: var(--amber-8);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-}
-
-.sync-guidance p {
-  max-width: 64ch;
-  margin-top: 3px;
-  color: color-mix(in srgb, var(--amber-8) 76%, var(--text));
-  font-size: var(--fs-xs);
-  line-height: 1.6;
-}
-
 .sync-state-card {
   position: relative;
   padding: var(--sp-5);
@@ -8627,7 +8582,7 @@ svg.category-symbol {
   }
 }
 
-/* 连接 iPhone：沿用状态卡的外观，里面放密钥、步骤、上传地址和操作 */
+/* 连接 iPhone：沿用状态卡的外观，头部是连接状态，下面是 4 步引导，每步的按钮跟在这一步下面 */
 .phone-link-card {
   display: grid;
   gap: 0;
@@ -8638,7 +8593,7 @@ svg.category-symbol {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--sp-2) var(--sp-3);
   align-items: center;
-  margin-top: var(--sp-4);
+  margin-top: var(--sp-3);
   padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--jade-line);
   border-radius: var(--r-md);
@@ -8664,23 +8619,121 @@ svg.category-symbol {
   font-size: var(--fs-xs);
 }
 
-.phone-link-steps {
-  display: grid;
-  gap: 4px;
-  margin: var(--sp-4) 0 0;
-  padding-left: 1.4em;
-  color: var(--text);
+.phone-link-head .phone-link-label {
+  color: var(--muted);
   font-size: var(--fs-xs);
-  line-height: 1.6;
 }
 
-.phone-link-url {
+/* 4 步引导：左边一列序号圈，用一条细竖线串起来；做完的步骤换成玉色对勾 */
+.phone-steps {
+  display: grid;
+  margin: var(--sp-5) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.phone-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-5);
+}
+
+.phone-step:last-child {
+  padding-bottom: 0;
+}
+
+.phone-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 32px;
+  bottom: 4px;
+  left: 13.5px;
+  width: 1px;
+  background: var(--line);
+}
+
+.phone-step-mark {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--ink-2);
+  color: var(--text);
+  font: 600 var(--fs-xs) / 1 var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.phone-step-mark svg {
+  display: none;
+  width: 14px;
+  height: 14px;
+}
+
+.phone-step.is-done .phone-step-mark {
+  border-color: var(--jade-line);
+  background: var(--jade-bg);
+  color: var(--jade-8);
+}
+
+.phone-step.is-done .phone-step-mark span {
+  display: none;
+}
+
+.phone-step.is-done .phone-step-mark svg {
+  display: block;
+}
+
+.phone-step-body {
+  min-width: 0;
+  padding-top: 3px;
+}
+
+.phone-step-body h4 {
+  color: var(--text-strong);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.phone-step-body > p {
+  max-width: 68ch;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.phone-step-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px var(--sp-2);
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
   margin-top: var(--sp-3);
-  color: var(--muted);
+}
+
+.phone-step-actions [hidden] {
+  display: none;
+}
+
+.phone-step-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-xs);
+}
+
+.phone-step-link svg {
+  width: 13px;
+  height: 13px;
+}
+
+.phone-step-note {
+  color: var(--amber-8);
   font-size: var(--fs-xs);
 }
 
@@ -8697,41 +8750,10 @@ svg.category-symbol {
 }
 
 .phone-link-card .btn svg,
-.phone-link-secret .btn svg,
 .sync-actions .btn svg {
   width: 16px;
   height: 16px;
   flex: none;
-}
-
-.phone-link-url .link-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  align-self: center;
-}
-
-.phone-link-url .link-button svg {
-  width: 13px;
-  height: 13px;
-}
-
-.phone-link-url code {
-  min-width: 0;
-  color: var(--text);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  overflow-wrap: anywhere;
-}
-
-.phone-link-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-  margin-top: var(--sp-4);
-}
-
-.phone-link-actions .btn[hidden] {
-  display: none;
 }
 
 /* 触发快捷指令的四种方式：两列卡片，推荐项用翡翠色描边。

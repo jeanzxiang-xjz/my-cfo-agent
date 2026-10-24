@@ -28,6 +28,7 @@ export const PHOSPHOR_ICONS = {
   "charging-station": '<polyline points="112 168 128 128 96 128 112 88" class="s r"/><path d="M56,216V56A16,16,0,0,1,72,40h80a16,16,0,0,1,16,16V216" class="s r"/><line x1="32" y1="216" x2="192" y2="216" class="s r"/><path d="M168,112h24a16,16,0,0,1,16,16v40a16,16,0,0,0,16,16h0a16,16,0,0,0,16-16V86.63a16,16,0,0,0-4.69-11.32L216,56" class="s r"/>',
   "chart-line-up": '<polyline points="224 208 32 208 32 48" class="s r"/><polyline points="200 72 128 144 96 112 32 176" class="s r"/><polyline points="200 112 200 72 160 72" class="s r"/>',
   "chat-circle-dots": '<circle cx="128" cy="128" r="12" class="f"/><circle cx="84" cy="128" r="12" class="f"/><circle cx="172" cy="128" r="12" class="f"/><path d="M79.93,211.11a96,96,0,1,0-35-35h0L32.42,213.46a8,8,0,0,0,10.12,10.12l37.39-12.47Z" class="s r"/>',
+  "check": '<polyline points="40 144 96 200 224 72" class="s r"/>',
   "check-circle": '<polyline points="88 136 112 160 168 104" class="s r"/><circle cx="128" cy="128" r="96" class="s r"/>',
   "cherries": '<circle cx="88" cy="160" r="64" class="s r"/><path d="M112,136s-8,8-24,8-24-8-24-8" class="s r"/><path d="M200,120s-8,8-24,8-24-8-24-8" class="s r"/><path d="M176,128C168,16,56,32,56,32c48,32,32,112,32,112" class="s r"/><path d="M123.81,107a64,64,0,1,1,16.41,90.12" class="s r"/>',
   "cloud": '<path d="M80,128a80,80,0,1,1,80,80H72A56,56,0,1,1,85.92,97.74" class="s r"/>',

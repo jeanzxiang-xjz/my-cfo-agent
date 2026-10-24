@@ -5409,31 +5409,52 @@ async function submitQuestion(question, { scoped = true } = {}) {
 
 const CAPTURE_SOURCE_LABELS = { shortcut_upload: "快捷指令", web_upload: "网页上传" };
 
+/**
+ * 连接 iPhone 的 4 步引导。能从服务端看出来的进度只有两件：密钥有没有生成、有没有收到过截图，
+ * 对应第 1 步和第 4 步打勾；主按钮（实心那个）始终落在「下一件该做的事」上。
+ */
 function renderPhoneLink(settings) {
   const card = $("phoneLinkCard");
   const status = settings?.token_status || {};
   const active = Boolean(status.active);
-  card.className = `sync-state-card phone-link-card ${active ? "success" : ""}`.trim();
-  $("phoneLinkTitle").textContent = active ? `已连接 · 密钥尾号 ${status.last4}` : "还没有连接 iPhone";
-  let meta = "生成上传密钥、装好「记一笔」快捷指令，支付完触发一下就能入账，不用再配邮箱。";
-  if (active) {
-    const last = settings.last_capture;
-    meta = last
-      ? `最近一次上传：${displayDateTime(last.created_at)} · ${last.message}`
-      : `密钥生成于 ${displayDateTime(status.created_at)}，还没有收到过截图。`;
-  }
-  $("phoneLinkMeta").textContent = meta;
-
   const token = settings?.token || "";
+  const last = settings?.last_capture;
+  card.className = `sync-state-card phone-link-card ${active ? "success" : ""}`.trim();
+
+  // 只生成了密钥还不算连上：收到第一张截图，才说明手机那头真的通了
+  $("phoneLinkTitle").textContent = !active ? "还没有连接 iPhone" : last ? "iPhone 已连接" : "密钥已生成，接着装快捷指令";
+  $("phoneLinkMeta").textContent = !active
+    ? "按下面 4 步，几分钟就能连上手机，开始记账。"
+    : last
+      ? `最近一次上传：${displayDateTime(last.created_at)} · ${last.message}`
+      : "装好后付完款触发一下，收到第一张截图就算连上了。";
+
+  // 第 1 步：生成密钥
+  $("phoneStepKey").classList.toggle("is-done", active);
   $("phoneLinkSecret").hidden = !token;
   $("phoneLinkToken").textContent = token;
-  $("phoneLinkUrl").textContent = settings?.upload_url || "--";
-
-  const install = $("installShortcutLink");
-  install.hidden = !settings?.shortcut_url;
-  if (settings?.shortcut_url) install.href = settings.shortcut_url;
-  setButtonLabel("rotateUploadToken", active ? "重新生成密钥" : "生成上传密钥");
+  $("phoneStepKeyHint").textContent = token
+    ? "已经帮你复制好了，下一步装快捷指令时粘贴它。"
+    : active
+      ? `已生成（尾号 ${status.last4}）。换了手机或者忘了密钥，重新生成一个，再到快捷指令里换上新的。`
+      : "它是手机往你账本里传账单的凭证，只属于你。生成后会自动复制，下一步要用。";
+  const rotate = $("rotateUploadToken");
+  rotate.classList.toggle("btn-primary", !active);
+  rotate.classList.toggle("btn-quiet", active);
+  setButtonLabel("rotateUploadToken", active ? "重新生成" : "生成密钥");
   $("revokeUploadToken").hidden = !active;
+
+  // 第 2 步：安装快捷指令；密钥有了之后它就是下一步，按钮升为主按钮
+  const install = $("installShortcutLink");
+  const shortcutUrl = settings?.shortcut_url || "";
+  install.hidden = !shortcutUrl;
+  if (shortcutUrl) install.href = shortcutUrl;
+  install.classList.toggle("btn-primary", active && !last);
+  install.classList.toggle("btn-quiet", !(active && !last));
+  $("installShortcutMissing").hidden = Boolean(shortcutUrl) || !settings;
+
+  // 第 4 步：收到过截图就算记下了第一笔
+  $("phoneStepFirst").classList.toggle("is-done", Boolean(last));
 }
 
 /** 按钮里带图标时只改文字那一段，直接改 textContent 会把图标一起抹掉。 */
@@ -5487,7 +5508,7 @@ function renderCaptureItems(captures) {
 }
 
 function setCaptureControlsDisabled(disabled) {
-  ["rotateUploadToken", "revokeUploadToken", "pickCaptureFiles", "copyUploadUrl"].forEach((id) => {
+  ["rotateUploadToken", "revokeUploadToken", "pickCaptureFiles"].forEach((id) => {
     $(id).disabled = disabled;
   });
 }
@@ -5603,8 +5624,8 @@ function wireCapture() {
   $("copyUploadToken").addEventListener("click", async () => {
     showToast((await copyText($("phoneLinkToken").textContent)) ? "密钥已复制" : "复制失败，请长按选中后手动复制", "info");
   });
-  $("copyUploadUrl").addEventListener("click", async () => {
-    showToast((await copyText($("phoneLinkUrl").textContent)) ? "上传地址已复制" : "复制失败，请手动复制", "info");
+  $("jumpShortcutTriggers").addEventListener("click", () => {
+    $("shortcutTriggers")?.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
   });
   $("pickCaptureFiles").addEventListener("click", () => $("captureFileInput").click());
   $("captureFileInput").addEventListener("change", (event) => {

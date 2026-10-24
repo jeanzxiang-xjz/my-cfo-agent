@@ -738,66 +738,96 @@ function CaptureModal() {
         </p>
 
         <div className="sync-body">
-          <aside className="sync-guidance" aria-labelledby="captureGuidanceTitle">
-            <span className="sync-guidance-icon" aria-hidden="true">
-              <Ph name="receipt" />
-            </span>
-            <div>
-              <strong id="captureGuidanceTitle">截图前，先打开账单详情页</strong>
-              <p>确认金额、支付时间和商户都完整显示在屏幕上，再触发快捷指令。</p>
-            </div>
-          </aside>
-
+          {/* 连接 iPhone：按一个新用户真正要做的事排成 4 步，每一步的按钮就放在这一步下面 */}
           <section className="sync-state-card phone-link-card" id="phoneLinkCard" aria-labelledby="phoneLinkTitle">
-            <span id="phoneLinkLabel" className="phone-link-label">
-              <Ph name="link" />
-              连接 iPhone
-            </span>
-            <strong id="phoneLinkTitle">读取中…</strong>
-            <small id="phoneLinkMeta" />
-
-            <div className="phone-link-secret" id="phoneLinkSecret" hidden>
-              <code id="phoneLinkToken" />
-              <button className="btn btn-quiet" type="button" id="copyUploadToken">
-                <Ph name="copy" />
-                复制密钥
-              </button>
-              <p>密钥只显示这一次，请现在复制。安装快捷指令时粘贴它；以后忘了就重新生成一个。</p>
+            <div className="phone-link-head">
+              <span className="phone-link-label">
+                <Ph name="link" />
+                连接 iPhone
+              </span>
+              <strong id="phoneLinkTitle">读取中…</strong>
+              <small id="phoneLinkMeta" />
             </div>
 
-            <ol className="phone-link-steps">
-              <li>生成上传密钥并复制</li>
-              <li>安装「记一笔」快捷指令，按提示粘贴密钥</li>
-              <li>支付后点开账单详情页，触发「记一笔」快捷指令即可</li>
+            <ol className="phone-steps">
+              <li className="phone-step" id="phoneStepKey">
+                <span className="phone-step-mark" aria-hidden="true">
+                  <span>1</span>
+                  <Ph name="check" />
+                </span>
+                <div className="phone-step-body">
+                  <h4>生成你的专属密钥</h4>
+                  <p id="phoneStepKeyHint">它是手机往你账本里传账单的凭证，只属于你。生成后会自动复制，下一步要用。</p>
+                  <div className="phone-link-secret" id="phoneLinkSecret" hidden>
+                    <code id="phoneLinkToken" />
+                    <button className="btn btn-quiet btn-sm" type="button" id="copyUploadToken">
+                      <Ph name="copy" />
+                      复制密钥
+                    </button>
+                    <p>密钥只显示这一次，先复制好；以后忘了，重新生成一个就行。</p>
+                  </div>
+                  <div className="phone-step-actions">
+                    <button className="btn btn-primary btn-sm" type="button" id="rotateUploadToken">
+                      <Ph name="key" />
+                      <span data-button-label>生成密钥</span>
+                    </button>
+                    <button className="link-button phone-step-link" type="button" id="revokeUploadToken" hidden>
+                      停用密钥
+                    </button>
+                  </div>
+                </div>
+              </li>
+
+              <li className="phone-step" id="phoneStepInstall">
+                <span className="phone-step-mark" aria-hidden="true">
+                  <span>2</span>
+                </span>
+                <div className="phone-step-body">
+                  <h4>在 iPhone 上安装「记一笔」快捷指令</h4>
+                  <p>用 iPhone 点击下方按钮添加快捷指令，根据提示粘贴上一步生成的专属密钥。</p>
+                  <div className="phone-step-actions">
+                    <a className="btn btn-quiet btn-sm" id="installShortcutLink" href="#" target="_blank" rel="noopener noreferrer" hidden>
+                      <Ph name="download-simple" />
+                      安装快捷指令
+                    </a>
+                    <p className="phone-step-note" id="installShortcutMissing" hidden>
+                      安装链接还没配置好，请联系管理员。
+                    </p>
+                  </div>
+                </div>
+              </li>
+
+              <li className="phone-step" id="phoneStepTrigger">
+                <span className="phone-step-mark" aria-hidden="true">
+                  <span>3</span>
+                </span>
+                <div className="phone-step-body">
+                  <h4>选一个顺手的触发方式</h4>
+                  <p>比如按住侧边的操作按钮、轻点手机背面。设置一次，以后不用再打开快捷指令 App。</p>
+                  <div className="phone-step-actions">
+                    <button className="link-button phone-step-link" type="button" id="jumpShortcutTriggers">
+                      看看 4 种触发方式
+                      <Ph name="arrow-down" />
+                    </button>
+                  </div>
+                </div>
+              </li>
+
+              <li className="phone-step" id="phoneStepFirst">
+                <span className="phone-step-mark" aria-hidden="true">
+                  <span>4</span>
+                  <Ph name="check" />
+                </span>
+                <div className="phone-step-body">
+                  <h4>记下第一笔</h4>
+                  <p>付完款停在账单详情页，确认金额、支付时间和商户都在屏幕上，触发「记一笔」。几秒后，结果会出现在下方「最近上传」里。</p>
+                </div>
+              </li>
             </ol>
-
-            <div className="phone-link-url">
-              <span>上传地址</span>
-              <code id="phoneLinkUrl">--</code>
-              <button className="link-button" type="button" id="copyUploadUrl">
-                <Ph name="copy" />
-                复制
-              </button>
-            </div>
-
-            <div className="phone-link-actions">
-              <a className="btn btn-primary" id="installShortcutLink" href="#" target="_blank" rel="noopener noreferrer" hidden>
-                <Ph name="download-simple" />
-                安装快捷指令
-              </a>
-              <button className="btn btn-quiet" type="button" id="rotateUploadToken">
-                <Ph name="key" />
-                <span data-button-label>生成上传密钥</span>
-              </button>
-              <button className="btn btn-quiet" type="button" id="revokeUploadToken" hidden>
-                <Ph name="prohibit" />
-                停用密钥
-              </button>
-            </div>
           </section>
 
           {/* 触发方式：很多人装好快捷指令后不知道怎么"点"它，这里列出四种常用入口 */}
-          <section className="shortcut-triggers" aria-labelledby="shortcutTriggersTitle">
+          <section className="shortcut-triggers" id="shortcutTriggers" aria-labelledby="shortcutTriggersTitle">
             <div className="shortcut-triggers-head">
               <h3 id="shortcutTriggersTitle">怎么触发快捷指令？</h3>
               <p>挑一种顺手的方式设置一次，以后停在账单详情页，一触即记。</p>
@@ -854,7 +884,7 @@ function CaptureModal() {
                   <li>无障碍</li>
                   <li>触控</li>
                   <li>辅助触控</li>
-                  <li>自定操作</li>
+                  <li>自定义操作</li>
                   <li>长按</li>
                   <li>记一笔</li>
                 </ol>
