@@ -194,10 +194,14 @@ macOS 之外没有 Apple Vision，OCR 需要换后端。`CFO_OCR_PROVIDER` 默�
 macOS 走 Vision，其它系统走阿里云通用文字识别，也可显式指定 `vision` / `aliyun`。
 
 ```bash
-# 只有走阿里云时才需要装依赖，项目其余部分仍是纯标准库
+# 依赖只有两样：阿里云 OCR SDK，和 Pillow（直传截图识别完转成 WebP 留底，省存储）
+# 项目其余部分仍是纯标准库
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r cfo_agent_poc/requirements.txt
+python -c "from PIL import features; print(features.check('webp'))"   # 应输出 True
 ```
+
+没装 Pillow 也能照常记账，只是截图按原图保存、省不了空间。
 
 在 `cfo_agent_poc/.env` 里补上（用**仅授予 OCR 权限的 RAM 子用户**，别用主账号 AccessKey）：
 

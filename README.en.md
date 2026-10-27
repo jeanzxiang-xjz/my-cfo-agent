@@ -196,10 +196,14 @@ There's no Apple Vision outside macOS, so OCR needs another backend. `CFO_OCR_PR
 Vision on macOS, Alibaba Cloud general OCR elsewhere; you can also set `vision` / `aliyun` explicitly.
 
 ```bash
-# Dependencies are only needed for Alibaba Cloud; everything else is still pure stdlib
+# Only two dependencies: the Alibaba Cloud OCR SDK, and Pillow (uploaded screenshots are
+# archived as WebP after OCR to save storage). Everything else is still pure stdlib
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r cfo_agent_poc/requirements.txt
+python -c "from PIL import features; print(features.check('webp'))"   # should print True
 ```
+
+Without Pillow, bills are still recorded; screenshots are just kept as the original files, with no storage savings.
 
 Add to `cfo_agent_poc/.env` (use a **RAM sub-user with OCR-only permissions**, never your root AccessKey):
 
