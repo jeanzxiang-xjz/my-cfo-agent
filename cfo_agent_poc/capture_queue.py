@@ -1,9 +1,12 @@
 """截图直传：落盘 → 排队 → OCR + 解析入账。
 
-快捷指令（或网页）把截图 POST 上来，服务端先把图片按内容哈希存进账本目录
-``data/captures/``，再在 ``capture_jobs`` 表里登记一个任务，最后交给后台线程池
+快捷指令（或网页）把截图 POST 上来，服务端先把原图按内容哈希存进账本的暂存区
+``data/captures/inbox/``，再在 ``capture_jobs`` 表里登记一个任务，最后交给后台线程池
 跑 OCR 和 ``store_bill_capture``。图片先落盘再处理，所以进程重启也不丢：启动时把
 没跑完的任务捡回来继续。
+
+原图只做「过路」：OCR 读原图，长期留底的是转好的 WebP（``data/captures/``，见
+``evidence_image``）。任务一结束（入账或最终失败），暂存区里的原图就删掉。
 
 同一张图重复上传是幂等的（同一个哈希只有一个任务）；失败会自动重试几次。
 """
@@ -18,6 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Iterable
 
+import evidence_image
 import process_bill_image
 from tenancy import Ledger
 
@@ -25,6 +29,7 @@ from tenancy import Ledger
 MAX_ATTEMPTS = 3
 RETRY_DELAY_SECONDS = 30.0
 CAPTURE_DIR_NAME = "captures"
+INBOX_DIR_NAME = "inbox"
 
 # 只收 PNG / JPEG：iPhone 截屏本来就是 PNG，阿里云 OCR 不认 HEIC
 _SIGNATURES = (
@@ -99,26 +104,26 @@ def save_capture(ledger: Ledger, data: bytes, *, source: str) -> tuple[dict, boo
     """存图并登记任务。返回 (任务, 是否新建)；同一张图再传一次拿到的是原来那个任务。"""
     kind = sniff_image(data)
     sha = hashlib.sha256(data).hexdigest()
-    relative = Path("data") / CAPTURE_DIR_NAME / f"cap_{sha[:24]}.{kind}"
+    relative = Path("data") / CAPTURE_DIR_NAME / INBOX_DIR_NAME / f"cap_{sha[:24]}.{kind}"
     target = ledger.root / relative
     conn = _connect(ledger)
     try:
         existing = conn.execute("select * from capture_jobs where image_sha = ?", (sha,)).fetchone()
         if existing is not None:
             if existing["status"] == "failed":
-                # 之前失败过的图又传了一次：当作用户想重试
+                # 之前失败过的图又传了一次：当作用户想重试。原图上次已经删了，用这次传上来的
+                _write_raw(target, data)
                 conn.execute(
-                    "update capture_jobs set status = 'queued', attempts = 0, error = null, updated_at = ? where id = ?",
-                    (_now(), existing["id"]),
+                    """
+                    update capture_jobs set status = 'queued', attempts = 0, error = null, image_path = ?,
+                    updated_at = ? where id = ?
+                    """,
+                    (relative.as_posix(), _now(), existing["id"]),
                 )
                 conn.commit()
                 existing = conn.execute("select * from capture_jobs where id = ?", (existing["id"],)).fetchone()
             return _row(existing), False
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if not target.exists():
-            temp = target.with_suffix(target.suffix + ".part")
-            temp.write_bytes(data)
-            temp.replace(target)
+        _write_raw(target, data)
         now = _now()
         try:
             cursor = conn.execute(
@@ -135,6 +140,14 @@ def save_capture(ledger: Ledger, data: bytes, *, source: str) -> tuple[dict, boo
         return _row(conn.execute("select * from capture_jobs where id = ?", (cursor.lastrowid,)).fetchone()), True
     finally:
         conn.close()
+
+
+def _write_raw(target: Path, data: bytes) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        temp = target.with_suffix(target.suffix + ".part")
+        temp.write_bytes(data)
+        temp.replace(target)
 
 
 def get_job(ledger: Ledger, job_id: int) -> dict | None:
@@ -164,16 +177,26 @@ def recent_jobs(ledger: Ledger, limit: int = 8) -> list[dict]:
 
 
 def unfinished_job_ids(ledger: Ledger) -> list[int]:
-    """进程上次退出时还没跑完的任务。processing 说明当时正跑到一半，放回队列。"""
+    """进程上次退出时还没跑完的任务。processing 说明当时正跑到一半，放回队列。
+
+    顺带清掉暂存区里没有任务认领的残留（写到一半的 .part、任务结束后没删成的原图）。
+    只在启动时、还没开始收上传之前调用，不会误删正在落盘的图。"""
     if not ledger.db_path.exists():
         return []
     conn = _connect(ledger)
     try:
         conn.execute("update capture_jobs set status = 'queued', updated_at = ? where status = 'processing'", (_now(),))
         conn.commit()
-        return [row[0] for row in conn.execute("select id from capture_jobs where status = 'queued' order by id")]
+        queued = conn.execute("select id, image_path from capture_jobs where status = 'queued' order by id").fetchall()
     finally:
         conn.close()
+    inbox = ledger.data_dir / CAPTURE_DIR_NAME / INBOX_DIR_NAME
+    if inbox.is_dir():
+        claimed = {(ledger.root / row["image_path"]).resolve() for row in queued}
+        for leftover in inbox.iterdir():
+            if leftover.is_file() and leftover.resolve() not in claimed:
+                leftover.unlink(missing_ok=True)
+    return [row["id"] for row in queued]
 
 
 _LEDGER_LOCKS: dict[str, threading.Lock] = {}
@@ -205,12 +228,20 @@ def process_job(ledger: Ledger, job_id: int) -> dict:
         if not claimed or job is None:
             return job or {}
 
+        raw = ledger.root / job["image_path"]
+        # 升级前就排上队的老任务，原图不在暂存区：照旧处理，不转存也不删
+        staged = _is_staged(ledger, raw)
+        final = False
+        evidence: Path | None = None
         try:
+            # 先转好留底的 WebP（同名已存在就复用），OCR 仍然读原图，精度不受影响
+            evidence = evidence_image.archive(raw, ledger.data_dir / CAPTURE_DIR_NAME) if staged else raw
             parsed = process_bill_image.process_image(
-                str(ledger.root / job["image_path"]),
+                str(raw),
                 source=job["source"],
                 captured_at=job["created_at"],
                 ledger=ledger,
+                evidence_path=str(evidence),
             )
         except Exception as exc:  # OCR 超时、网络抖动、解析异常都在这里兜住
             final = job["attempts"] >= MAX_ATTEMPTS
@@ -221,6 +252,7 @@ def process_job(ledger: Ledger, job_id: int) -> dict:
                 ("failed" if final else "queued", message[:300], _now(), _now() if final else None, job_id),
             )
         else:
+            final = True
             update = (
                 """
                 update capture_jobs set status = 'done', error = null, transaction_uid = ?, amount = ?,
@@ -228,13 +260,38 @@ def process_job(ledger: Ledger, job_id: int) -> dict:
                 """,
                 (parsed.transaction_uid, parsed.amount, parsed.merchant, parsed.paid_at, _now(), _now(), job_id),
             )
+        final_path = _evidence_for(ledger, raw, evidence) if final and staged else None
         conn = _connect(ledger)
         try:
             conn.execute(*update)
+            if final_path is not None:
+                conn.execute("update capture_jobs set image_path = ? where id = ?", (final_path, job_id))
             conn.commit()
-            return _row(conn.execute("select * from capture_jobs where id = ?", (job_id,)).fetchone())
+            result = _row(conn.execute("select * from capture_jobs where id = ?", (job_id,)).fetchone())
         finally:
             conn.close()
+        # 任务记录已经指向证据图，原图才可以删；这一步要是没删成，下次启动时清掉
+        if final_path is not None:
+            raw.unlink(missing_ok=True)
+        return result
+
+
+def _is_staged(ledger: Ledger, raw: Path) -> bool:
+    return raw.resolve().parent == (ledger.data_dir / CAPTURE_DIR_NAME / INBOX_DIR_NAME).resolve()
+
+
+def _evidence_for(ledger: Ledger, raw: Path, evidence: Path | None) -> str | None:
+    """任务结束时原图要换成的证据图（相对路径）。
+
+    证据图一般在 OCR 之前就转好了；转图那一步本身抛了异常的，这里再补一次。
+    出了岔子就返回 None、原图原样留着，不能因此把任务状态卡住。"""
+    try:
+        if evidence is None:
+            evidence = evidence_image.archive(raw, ledger.data_dir / CAPTURE_DIR_NAME)
+        return evidence.relative_to(ledger.root).as_posix()
+    except Exception as exc:
+        print(f"[CFO] 截图原图收尾失败：{type(exc).__name__}: {str(exc)[:200]}")
+        return None
 
 
 class CaptureWorker:

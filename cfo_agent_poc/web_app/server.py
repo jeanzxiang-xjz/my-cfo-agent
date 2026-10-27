@@ -2708,10 +2708,16 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return
             content = image_path.read_bytes()
-            mime_type = mimetypes.guess_type(image_path.name)[0] or "application/octet-stream"
+            # 新截图留底是 WebP；老版本 Python 的 mimetypes 不一定认识它
+            mime_type = (
+                "image/webp" if image_path.suffix.lower() == ".webp"
+                else mimetypes.guess_type(image_path.name)[0] or "application/octet-stream"
+            )
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", mime_type)
             self.send_header("Content-Length", str(len(content)))
+            # 证据图入账后不会再变，反复打开同一笔账不用重新下载
+            self.send_header("Cache-Control", "private, max-age=86400")
             self.end_headers()
             self.wfile.write(content)
             return

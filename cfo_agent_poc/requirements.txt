@@ -1,5 +1,6 @@
-# 仅 Linux 服务器部署需要（CFO_OCR_PROVIDER=aliyun）。
-# macOS 本地开发走 Apple Vision，不装这些也能跑，项目其余部分全是标准库。
+# 阿里云 SDK 仅 Linux 服务器部署需要（CFO_OCR_PROVIDER=aliyun）。
+# macOS 本地开发走 Apple Vision，不装这些也能跑。
+# Pillow 用来把截图转成 WebP 留底；没装时照常记账，只是原图原样保存、省不了空间。
 #
 #   python3 -m venv .venv && . .venv/bin/activate
 #   pip install -r cfo_agent_poc/requirements.txt
@@ -7,3 +8,4 @@
 alibabacloud_ocr_api20210707==3.1.2
 alibabacloud_tea_openapi
 alibabacloud_tea_util
+Pillow>=9.1
