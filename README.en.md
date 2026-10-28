@@ -10,7 +10,7 @@
 
 A self-hosted, multi-user personal CFO agent:<br>
 an iPhone Shortcut uploads the bill screenshot straight to the server → OCR & rule-based parsing → one SQLite ledger per user → web finance dashboard + LLM chat.<br>
-One app, one domain, sign up and go. Run it on your own Mac (OCR stays fully offline), or deploy it to a server for 24/7 operation.
+One app, one domain, sign up and go. Run it on your own Mac or deploy it to a server for 24/7 operation — either way OCR runs locally and offline.
 
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-black?logo=apple)](#-quick-start)
 [![Python](https://img.shields.io/badge/python-3.x-3776AB?logo=python&logoColor=white)](#-quick-start)
@@ -52,7 +52,7 @@ The system does:        receive screenshot → OCR → parse → categorize → 
 |---|---|---|
 | 📸 | **Near-zero-effort capture** | Tap an iPhone Shortcut after paying: the screenshot goes straight to your ledger over HTTPS and a notification tells you what was booked. No mailbox setup. |
 | 👥 | **Multi-user, one deployment** | Sign-up and login, invite codes, a separate ledger per user — one process, one port, one domain for everyone. |
-| 🔍 | **Pluggable OCR** | macOS Vision by default — free, offline, screenshots never leave your machine. Switches to Alibaba Cloud OCR when deployed on Linux. |
+| 🔍 | **Local OCR, zero per-call cost** | RapidOCR (PP-OCRv6) by default, running on your own CPU — free, offline, screenshots never leave the server. macOS Vision and Alibaba Cloud OCR are available as options. |
 | 🧾 | **Rule-based parsing** | Extracts amount, time, merchant, product, payment method, order ID, and infers a spending category. |
 | 🧠 | **Finance dashboard** | Today / week / month / all periods in sync: total spend, category weights, cash-flow trends, budget progress. |
 | 💬 | **A ledger you can talk to** | Powered by DeepSeek. Ask "what was my biggest expense this month?" — answers are grounded in your real ledger. |
@@ -71,7 +71,7 @@ Follow a single transaction and you understand the whole system:
 1. **Pay**, then open the bill detail page in WeChat / Alipay;
 2. **Trigger the "记一笔" Shortcut** — it screenshots the page and POSTs it to `/api/v1/captures` with your upload key;
 3. The server stores the screenshot in **your ledger directory** under its content hash and queues a recognition job (re-uploading the same image is a no-op);
-4. **OCR** reads the screenshot (system Vision on macOS, Alibaba Cloud on Linux); the raw text is archived under `data/ocr_texts/`;
+4. **OCR** reads the screenshot (local RapidOCR by default — offline and free); the raw text is archived under `data/ocr_texts/`;
 5. **Rule-based parsing** extracts amount / time / merchant, builds a unique transaction ID, and **upserts into SQLite**; within seconds the result goes back to the phone as a notification like "已记账 ¥32.50 · 美团外卖";
 6. Local rules and merchant memory categorize first; unfamiliar spending is completed in the background by DeepSeek using trimmed fields;
 7. The dashboard refreshes stats, ledger, trends, and budget progress;
@@ -106,6 +106,7 @@ Open [http://localhost:8091](http://localhost:8091): no login needed, 128 fictio
 git clone https://github.com/jeanzxiang-xjz/my-cfo-agent.git
 cd my-cfo-agent
 cp cfo_agent_poc/.env.example cfo_agent_poc/.env
+pip3 install -r cfo_agent_poc/requirements.txt   # RapidOCR (OCR models included) and Pillow
 ```
 
 Edit `cfo_agent_poc/.env`:
@@ -190,30 +191,42 @@ curl http://127.0.0.1:8091/health
 </details>
 
 <details>
-<summary><b>Deploying to a Linux server (HTTPS domain + Alibaba Cloud OCR)</b></summary>
+<summary><b>Deploying to a Linux server (HTTPS domain)</b></summary>
 
-There's no Apple Vision outside macOS, so OCR needs another backend. `CFO_OCR_PROVIDER` defaults to `auto`:
-Vision on macOS, Alibaba Cloud general OCR elsewhere; you can also set `vision` / `aliyun` explicitly.
+OCR uses RapidOCR by default and runs on the server's own CPU, just like on a Mac — no cloud keys, no per-call fees.
+`CFO_OCR_PROVIDER` defaults to `auto` (= `rapidocr`); you can also set `vision` (macOS only) or `aliyun` (a pay-per-call fallback).
 
 ```bash
-# Only two dependencies: the Alibaba Cloud OCR SDK, and Pillow (uploaded screenshots are
-# archived as WebP after OCR to save storage). Everything else is still pure stdlib
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r cfo_agent_poc/requirements.txt
-python -c "from PIL import features; print(features.check('webp'))"   # should print True
+# Self-check: both should print True
+python -c "from PIL import features; print(features.check('webp'))"
+python -c "import sys; sys.path.insert(0, 'cfo_agent_poc'); import ocr_providers; print(ocr_providers.warm_up())"
 ```
 
-Without Pillow, bills are still recorded; screenshots are just kept as the original files, with no storage savings.
+- RapidOCR keeps about 0.5 GB resident; give the server at least 2 GB of RAM. Inference threads default to the CPU count; override with `CFO_OCR_THREADS`.
+- The server warms the model up in the background at startup, so the first screenshot doesn't wait for model loading.
+- Without Pillow, bills are still recorded; screenshots are just kept as the original files, with no storage savings.
 
-Add to `cfo_agent_poc/.env` (use a **RAM sub-user with OCR-only permissions**, never your root AccessKey):
+Add the public URL to `cfo_agent_poc/.env`:
+
+```
+CFO_PUBLIC_BASE_URL=https://cfo.example.com
+```
+
+<details>
+<summary>Switching back to Alibaba Cloud OCR</summary>
+
+Use a **RAM sub-user with OCR-only permissions**, never your root AccessKey:
 
 ```
 CFO_OCR_PROVIDER=aliyun
 ALIBABA_CLOUD_ACCESS_KEY_ID=...
 ALIBABA_CLOUD_ACCESS_KEY_SECRET=...
 CFO_OCR_REGION=cn-hangzhou
-CFO_PUBLIC_BASE_URL=https://cfo.example.com
 ```
+
+</details>
 
 The app only listens on `127.0.0.1:8091`; a reverse proxy serves the HTTPS domain. Ready-made configs live in `cfo_agent_poc/deploy/`:
 
@@ -223,7 +236,7 @@ The app only listens on `127.0.0.1:8091`; a reverse proxy serves the HTTPS domai
 | `nginx.conf.example` | If you already run Nginx. **It must forward the `Host` header**, or saves and uploads in the web app are rejected as cross-site requests |
 | `cfo-web.service` | systemd unit: start on boot, restart on failure |
 
-Alibaba Cloud OCR doesn't support HEIC/HEIF; iPhone screenshots are PNG, so this normally never comes up.
+Uploads accept PNG / JPEG only; iPhone screenshots are PNG, so HEIC normally never comes up.
 
 > The frontend build `dist/` isn't in the repo. Build it on your dev machine with
 > `npm run build` and upload it, so the server needs no Node toolchain.
@@ -248,7 +261,7 @@ Alibaba Cloud OCR doesn't support HEIC/HEIF; iPhone screenshots are PNG, so this
 
 - **Capture via "Shortcut + direct HTTPS upload" instead of a mobile app or email** — Shortcuts cost nothing to install; uploading directly removes the whole "email it → server pulls IMAP" setup and lets the result pop straight back onto the phone. The phone only holds a **write-only** upload key, so losing it exposes nothing.
 - **"One database per user" instead of one big table with a `user_id` column** — every user gets a ledger directory laid out exactly like the single-user version: existing SQL is untouched, isolation is physical, and export, deletion, backup and migration are all just directory operations.
-- **Pluggable OCR instead of a hard dependency on one vendor** (`ocr_providers.py`) — macOS uses system Vision by default: local, free, great at Chinese bills, screenshots never leave the machine. But Vision is Apple-only, so running 24/7 means a Linux server, where it switches to Alibaba Cloud OCR. The seam is a single `ocr_image(path) -> str`; everything downstream is unaware of which backend ran.
+- **Pluggable OCR instead of a hard dependency on one vendor** (`ocr_providers.py`) — RapidOCR (PP-OCRv6 + ONNX Runtime) by default: local CPU inference, free, and the same engine on Mac and Linux, so parsing rules tuned locally behave the same in production. It's tuned for a small 2-core server (downscaled detection, line-by-line recognition, ONNX shape caching off), and `eval_ocr_backends.py` regresses it against past bills. macOS Vision and Alibaba Cloud OCR remain as optional backends. The seam is a single `ocr_image(path) -> str`; everything downstream is unaware of which backend ran.
 - **Rule-based parsing instead of letting an LLM write to the DB** — bill layouts are stable; rules are controllable, explainable, and cost zero tokens. The LLM only handles the conversation layer.
 - **Python stdlib + SQLite backend** — no heavy framework needed; one file per ledger is easy to back up and query with plain SQL. Each request authenticates first, then binds "the current ledger" to itself; an unbound request fails instead of falling back to some default database.
 
@@ -288,7 +301,7 @@ The server never dumps the whole database into the LLM. It builds a trimmed cont
 
 > Known boundaries:
 > - The chat path sends partial transaction context to DeepSeek. For full offline operation, swap in a local LLM (see Roadmap).
-> - **With `CFO_OCR_PROVIDER=aliyun`, bill screenshots are uploaded to Alibaba Cloud OCR** — the price of 24/7 operation on Linux. Stay on macOS with Vision and screenshots never leave your machine.
+> - OCR runs on the server itself by default, so screenshots never leave it; **only with `CFO_OCR_PROVIDER=aliyun` are bill screenshots uploaded to Alibaba Cloud OCR**.
 > - On a public server, every user's ledger and the platform's API keys live on that machine, and whoever operates it can see all the data. Always use HTTPS and guard access to the server.
 
 ## 🗺️ Roadmap

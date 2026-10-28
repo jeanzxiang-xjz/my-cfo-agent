@@ -904,7 +904,8 @@ def alipay_header_merchant(lines: list[str]) -> str | None:
     # 支付宝标题区常是「图标字 + 店名 + 店名」，重复出现的那个最可信
     occurrences = Counter(compact_text(line) for line in candidates)
     repeated = [line for line in candidates if occurrences[compact_text(line)] > 1]
-    return (repeated or candidates)[-1]
+    # 「毛氏饭铺（湘菜,工商大学店）」：Vision 会把括号折到下一行，RapidOCR 整行给出，门店名要切掉
+    return strip_branch((repeated or candidates)[-1])
 
 
 def meituan_monthly_header_merchant(lines: list[str]) -> str | None:

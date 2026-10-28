@@ -220,6 +220,13 @@ class MerchantAndItemExtractionTests(unittest.TestCase):
 
         self.assertEqual(parsed.merchant, "Pockyt Shop")
 
+    def test_alipay_title_drops_branch_whether_or_not_ocr_wraps_it(self) -> None:
+        """Vision 把门店括号折到下一行，RapidOCR 整行给出：两种都只留商户主体。"""
+        tail = "\n-34.42\n支付成功\n支付时间\n2026-08-12 14:10:57"
+        for title in ("毛氏饭铺\n(湘菜，工商大学店)", "毛氏饭铺（湘菜,工商大学店）"):
+            parsed = parse_bill_text("账单详情\n全部账单\n" + title + tail, source_hint="alipay")
+            self.assertEqual(parsed.merchant, "毛氏饭铺", title)
+
     def test_store_names_parsed_from_platform_products(self) -> None:
         cases = {
             "Super Model超模厨房(长沙岳麓店) )- 美团App- 2608": "Super Model超模厨房",

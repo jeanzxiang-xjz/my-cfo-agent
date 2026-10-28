@@ -5,15 +5,16 @@
 它的字段抽取正则要求标签独占一行、值在下一行（见 bill_store.py 的 extract_field），
 所以**同一视觉行的左右两块必须各自成行，不能拼接**。
 
-- vision：macOS 上调 Apple Vision（ocr_image.swift），本地、免费、离线。
-- aliyun：阿里云通用文字识别，供 Linux 服务器使用。
+- rapidocr：默认后端。RapidOCR（PP-OCR 模型 + ONNX Runtime），本机 CPU 推理，
+  免费、离线、截图不出服务器，macOS 和 Linux 一样用，本地调好的解析规则上线不走样。
+- vision：macOS 上调 Apple Vision（ocr_image.swift），需要时手动指定。
+- aliyun：阿里云通用文字识别，按次计费，只在显式指定时作为后备。
 """
 
 from __future__ import annotations
 
 import json
 import os
-import platform
 import subprocess
 import threading
 from pathlib import Path
@@ -21,6 +22,21 @@ from typing import Any
 
 PROJECT_DIR = Path(__file__).resolve().parent
 OCR_SCRIPT = PROJECT_DIR / "ocr_image.swift"
+
+# RapidOCR 参数由真实账单回归选定（见 eval_ocr_backends.py），目标是 2 核小内存服务器。
+# 用包里自带的 PP-OCRv6 small 检测 + 识别模型，部署不用另外下载模型。
+RAPIDOCR_PARAMS: dict[str, Any] = {
+    # 截图不会倒着放，方向分类整步跳过
+    "Global.use_cls": False,
+    "Global.log_level": "error",
+    # 找文字框不需要原分辨率：长边缩到 960 再检测，识别仍从原图裁字。
+    # 默认是「短边不足 736 就放大」，1206 宽的直传截图会按 920×2000 去检测，又慢又吃内存
+    "Det.limit_type": "max",
+    "Det.limit_side_len": 960,
+    # 一行一推：批处理会把一批文字条补齐到最宽那条，账单里短标签多，补齐纯属浪费，逐条反而快一倍
+    "Rec.rec_batch_num": 1,
+    "EngineConfig.onnxruntime.inter_op_num_threads": 1,
+}
 
 DEFAULT_REGION = "cn-hangzhou"
 DEFAULT_TIMEOUT_SECONDS = 20.0
@@ -42,16 +58,127 @@ def _provider_name() -> str:
     configured = os.environ.get("CFO_OCR_PROVIDER", "").strip().lower()
     if configured and configured != "auto":
         return configured
-    return "vision" if platform.system() == "Darwin" else "aliyun"
+    return "rapidocr"
 
 
 def ocr_image(image_path: str) -> str:
     provider = _provider_name()
+    if provider == "rapidocr":
+        return _ocr_rapidocr(image_path)
     if provider == "vision":
         return _ocr_vision(image_path)
     if provider == "aliyun":
         return _ocr_aliyun(image_path)
-    raise OCRError(f"未知的 OCR 后端 {provider!r}，CFO_OCR_PROVIDER 只支持 auto / vision / aliyun。")
+    raise OCRError(f"未知的 OCR 后端 {provider!r}，CFO_OCR_PROVIDER 只支持 auto / rapidocr / vision / aliyun。")
+
+
+def warm_up() -> bool:
+    """服务启动时预热：提前加载模型、跑一次小图，第一张上传的截图就不用等。
+
+    只有 rapidocr 需要预热，其它后端直接返回 False。"""
+    if _provider_name() != "rapidocr":
+        return False
+    import cv2
+    import numpy as np
+
+    # 要有字：检测到文字框才会顺带加载识别模型
+    sample = np.full((64, 320, 3), 255, dtype=np.uint8)
+    cv2.putText(sample, "CFO -12.00", (10, 44), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 2)
+    with _rapidocr_lock:
+        _rapidocr_engine()(sample)
+    return True
+
+
+# --------------------------------------------------------------------------
+# RapidOCR（默认）
+# --------------------------------------------------------------------------
+
+_rapidocr_lock = threading.Lock()
+_rapidocr: Any = None
+
+
+def _rapidocr_threads() -> int:
+    raw = os.environ.get("CFO_OCR_THREADS", "").strip()
+    try:
+        threads = int(raw) if raw else 0
+    except ValueError:
+        threads = 0
+    return threads if threads > 0 else (os.cpu_count() or 1)
+
+
+def _rapidocr_engine() -> Any:
+    """懒加载单例，调用方须持有 ``_rapidocr_lock``。模型只加载一份，常驻内存。"""
+    global _rapidocr
+    if _rapidocr is None:
+        try:
+            from rapidocr import RapidOCR
+        except ImportError as exc:
+            raise OCRError("缺少 RapidOCR。请先执行：pip install -r cfo_agent_poc/requirements.txt") from exc
+        _lean_session_options()
+        params = dict(RAPIDOCR_PARAMS)
+        params["EngineConfig.onnxruntime.intra_op_num_threads"] = _rapidocr_threads()
+        _rapidocr = RapidOCR(params=params)
+    return _rapidocr
+
+
+def _lean_session_options() -> None:
+    """ONNX 会话关掉 mem_pattern。
+
+    文字条宽度张张不同，mem_pattern 会给每种输入形状各缓存一套内存规划，常驻内存越跑越大；
+    关掉后速度基本不变。RapidOCR 没开放这个选项，只能包一层它生成会话选项的方法。
+    版本锁在 requirements.txt 里；哪天内部结构变了就跳过，只是多占些内存，不影响识别。"""
+    try:
+        from rapidocr.inference_engine.onnxruntime.main import OrtInferSession
+
+        original = OrtInferSession._init_sess_opts
+    except (ImportError, AttributeError):
+        return
+    if getattr(original, "_cfo_lean", False):
+        return
+
+    def init_sess_opts(cfg: Any) -> Any:
+        options = original(cfg)
+        options.enable_mem_pattern = False
+        return options
+
+    init_sess_opts._cfo_lean = True  # type: ignore[attr-defined]
+    OrtInferSession._init_sess_opts = staticmethod(init_sess_opts)
+
+
+def _ocr_rapidocr(image_path: str) -> str:
+    if not Path(image_path).is_file():
+        raise OCRError(f"图片不存在：{image_path}")
+    # 推理串行：小核数机器上两张图并行只会互相抢 CPU，单张用满线程反而最快
+    with _rapidocr_lock:
+        engine = _rapidocr_engine()
+        try:
+            result = engine(image_path)
+        except Exception as exc:  # 坏图、解码失败
+            raise OCRError(f"RapidOCR 识别失败：{type(exc).__name__}: {str(exc)[:200]}") from exc
+    return text_from_rapidocr(result)
+
+
+def text_from_rapidocr(result: Any) -> str:
+    """把 RapidOCR 的 boxes / txts 还原成阅读顺序的文本。
+
+    boxes 是像素四角点，原点左上、y 向下，和阿里云同一个坐标系，排序逻辑共用。"""
+    boxes = getattr(result, "boxes", None)
+    txts = getattr(result, "txts", None)
+    if boxes is None or not txts:
+        return ""
+    entries: list[tuple[float, float, str]] = []
+    for box, raw_text in zip(boxes, txts):
+        text = str(raw_text or "").strip()
+        if not text:
+            continue
+        xs = [float(point[0]) for point in box]
+        ys = [float(point[1]) for point in box]
+        entries.append((sum(ys) / len(ys), min(xs), text))
+    if not entries:
+        return ""
+    image = getattr(result, "img", None)
+    height = float(image.shape[0]) if image is not None else 0.0
+    return "\n".join(_ordered_lines(entries, height)).strip()
 
 
 # --------------------------------------------------------------------------
@@ -259,9 +386,18 @@ def lines_from_prism(data: dict) -> str:
     if not entries:
         return str(data.get("content") or "").strip()
 
-    entries.sort(key=lambda entry: (entry[0], entry[1]))
+    height = data.get("height") or data.get("orgHeight")
+    try:
+        height_value = float(height or 0)
+    except (TypeError, ValueError):
+        height_value = 0.0
+    return "\n".join(_ordered_lines(entries, height_value)).strip()
 
-    tolerance = _row_tolerance(data, entries)
+
+def _ordered_lines(entries: list[tuple[float, float, str]], height: float) -> list[str]:
+    """(y 中心, x 最左, 文本) 条目按阅读顺序排好，每个条目一行。阿里云和 RapidOCR 共用。"""
+    entries = sorted(entries, key=lambda entry: (entry[0], entry[1]))
+    tolerance = _row_tolerance(height, entries)
     ordered: list[str] = []
     row: list[tuple[float, float, str]] = [entries[0]]
     for entry in entries[1:]:
@@ -272,7 +408,7 @@ def lines_from_prism(data: dict) -> str:
             ordered.extend(_flush_row(row))
             row = [entry]
     ordered.extend(_flush_row(row))
-    return "\n".join(ordered).strip()
+    return ordered
 
 
 def _flush_row(row: list[tuple[float, float, str]]) -> list[str]:
@@ -296,12 +432,7 @@ def _entry_position(item: dict) -> tuple[float | None, float | None]:
     return float(y) + float(height) / 2, float(x)
 
 
-def _row_tolerance(data: dict, entries: list[tuple[float, float, str]]) -> float:
-    height = data.get("height") or data.get("orgHeight")
-    try:
-        height_value = float(height or 0)
-    except (TypeError, ValueError):
-        height_value = 0.0
+def _row_tolerance(height_value: float, entries: list[tuple[float, float, str]]) -> float:
     if height_value <= 0:
         # 返回里没有图片高度时，用条目 y 的跨度兜底，保证容差仍与图片尺度相关。
         height_value = max(entry[0] for entry in entries) - min(entry[0] for entry in entries)

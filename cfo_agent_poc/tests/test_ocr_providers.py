@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+import importlib.util
 import json
+import os
+import sys
+import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
+from cfo_agent_poc import ocr_providers
 from cfo_agent_poc.bill_store import extract_field, parse_bill_text
 from cfo_agent_poc.ocr_providers import (
     OCRError,
     _check_supported_format,
     lines_from_prism,
+    text_from_rapidocr,
     text_from_recognize_data,
 )
 
@@ -209,6 +217,104 @@ class RecognizeDataCoercionTests(unittest.TestCase):
     def test_rejects_malformed_json(self) -> None:
         with self.assertRaises(OCRError):
             text_from_recognize_data("{not json")
+
+
+def rapidocr_result(rows: list[list[str]], *, jitter: int = 0) -> SimpleNamespace:
+    """同一份版面换成 RapidOCR 的返回形状：boxes 是像素四角点，txts 与之一一对应。"""
+    payload = prism_payload(rows, jitter=jitter)
+    boxes = [[[point["x"], point["y"]] for point in item["pos"]] for item in payload["prism_wordsInfo"]]
+    txts = tuple(item["word"] for item in payload["prism_wordsInfo"])
+    image = SimpleNamespace(shape=(payload["height"], payload["width"], 3))
+    return SimpleNamespace(boxes=boxes, txts=txts, scores=tuple(1.0 for _ in txts), img=image)
+
+
+class RapidOCRReadingOrderTests(unittest.TestCase):
+    def test_same_layout_reads_exactly_like_aliyun(self) -> None:
+        """同一张截图，RapidOCR 和阿里云重建出的文本必须逐行一致，下游解析器才无感。"""
+        self.assertEqual(
+            text_from_rapidocr(rapidocr_result(WECHAT_DETAIL_ROWS)),
+            lines_from_prism(prism_payload(WECHAT_DETAIL_ROWS)),
+        )
+
+    def test_label_and_value_stay_on_separate_lines_despite_drift(self) -> None:
+        lines = text_from_rapidocr(rapidocr_result(WECHAT_DETAIL_ROWS, jitter=8)).splitlines()
+
+        self.assertEqual(lines[lines.index("支付时间") + 1], "2026年07月11日 20:30:49")
+
+    def test_empty_result_yields_empty_text(self) -> None:
+        empty = SimpleNamespace(boxes=None, txts=None, scores=None, img=None)
+
+        self.assertEqual(text_from_rapidocr(empty), "")
+
+
+class ProviderSelectionTests(unittest.TestCase):
+    def test_auto_uses_rapidocr_on_every_platform(self) -> None:
+        for configured in ("", "auto", "AUTO"):
+            with patch.dict(os.environ, {"CFO_OCR_PROVIDER": configured}):
+                self.assertEqual(ocr_providers._provider_name(), "rapidocr")
+
+    def test_aliyun_and_vision_only_when_asked_for(self) -> None:
+        for configured in ("aliyun", "vision"):
+            with patch.dict(os.environ, {"CFO_OCR_PROVIDER": configured}):
+                self.assertEqual(ocr_providers._provider_name(), configured)
+
+    def test_unknown_provider_lists_the_choices(self) -> None:
+        with patch.dict(os.environ, {"CFO_OCR_PROVIDER": "tesseract"}), self.assertRaises(OCRError) as ctx:
+            ocr_providers.ocr_image("/tmp/a.png")
+
+        self.assertIn("rapidocr", str(ctx.exception))
+
+    def test_missing_rapidocr_explains_how_to_install(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".png") as image, patch.object(ocr_providers, "_rapidocr", None), \
+                patch.dict(sys.modules, {"rapidocr": None}), self.assertRaises(OCRError) as ctx:
+            ocr_providers._ocr_rapidocr(image.name)
+
+        self.assertIn("requirements.txt", str(ctx.exception))
+
+    def test_thread_count_defaults_to_cpu_count(self) -> None:
+        with patch.dict(os.environ, {"CFO_OCR_THREADS": ""}):
+            self.assertEqual(ocr_providers._rapidocr_threads(), os.cpu_count() or 1)
+        with patch.dict(os.environ, {"CFO_OCR_THREADS": "2"}):
+            self.assertEqual(ocr_providers._rapidocr_threads(), 2)
+
+
+CJK_FONTS = [
+    "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    "/System/Library/Fonts/STHeiti Medium.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+]
+CJK_FONT = next((font for font in CJK_FONTS if Path(font).is_file()), None)
+
+
+@unittest.skipUnless(importlib.util.find_spec("rapidocr") and CJK_FONT, "没装 RapidOCR 或没有中文字体")
+class RapidOCRModelTests(unittest.TestCase):
+    """真模型跑一张现画的微信账单：识别 → 解析，金额、时间、单号都要对。"""
+
+    def test_recognizes_a_rendered_wechat_bill(self) -> None:
+        from PIL import Image, ImageDraw, ImageFont
+
+        font = ImageFont.truetype(CJK_FONT, 40)
+        image = Image.new("RGB", (1206, 1400), "white")
+        draw = ImageDraw.Draw(image)
+        draw.text((420, 80), "示例便利店", font=font, fill="black")
+        draw.text((470, 180), "-38.50", font=ImageFont.truetype(CJK_FONT, 80), fill="black")
+        rows = [("当前状态", "支付成功"), ("支付时间", "2026年07月12日 10:20:30"),
+                ("支付方式", "零钱"), ("交易单号", "4200002345202607121234567890")]
+        for index, (label, value) in enumerate(rows):
+            draw.text((80, 400 + index * 120), label, font=font, fill=(120, 120, 120))
+            draw.text((380, 400 + index * 120), value, font=font, fill="black")
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "bill.png"
+            image.save(path)
+            with patch.dict(os.environ, {"CFO_OCR_PROVIDER": "rapidocr"}):
+                parsed = parse_bill_text(ocr_providers.ocr_image(str(path)), source_hint="wechat")
+
+        self.assertEqual(parsed.amount, 38.5)
+        self.assertEqual(parsed.paid_at, "2026-07-12T10:20:30")
+        self.assertEqual(parsed.transaction_id, "4200002345202607121234567890")
+        self.assertEqual(parsed.payment_method, "零钱")
 
 
 class FormatGuardTests(unittest.TestCase):

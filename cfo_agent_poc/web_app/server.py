@@ -61,6 +61,7 @@ LOGIN_THROTTLE = LoginThrottle()
 DEBUG_TRACE = os.environ.get("CFO_DEBUG") == "1"
 
 import capture_queue
+import ocr_providers
 from capture_queue import CaptureRejected, CaptureWorker
 from bill_store import capture_overrides, ensure_bill_tables, remember_merchant_alias
 from classification_service import settle_stuck_transactions, start_background_enrichment
@@ -2987,6 +2988,14 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": False, "answer": safe_error_message("删除分类失败", exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
 
+def _warm_up_ocr() -> None:
+    try:
+        if ocr_providers.warm_up():
+            print("[CFO] OCR 模型已预热")
+    except Exception as exc:  # 预热失败不挡启动，第一张截图识别时会再报具体错误
+        print(f"[CFO] OCR 预热失败：{type(exc).__name__}: {str(exc)[:200]}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Serve Jeanz CFO web app with live SQLite-backed data.")
     parser.add_argument("--host", default="127.0.0.1")
@@ -2996,6 +3005,8 @@ def main() -> None:
     if DEMO_MODE:
         ensure_ledger_schema(DEMO_LEDGER)
     else:
+        # 后台加载 OCR 模型，不拖慢启动；续跑的截图任务会在锁上等它加载完
+        threading.Thread(target=_warm_up_ocr, name="cfo-ocr-warmup", daemon=True).start()
         # 上次进程可能是在分类跑到一半时挂的，那些行会一直停在 pending。
         # 启动时把每个账本都收一次尾，保证界面上不会留着「识别中」。
         users = ACCOUNTS.list_users()

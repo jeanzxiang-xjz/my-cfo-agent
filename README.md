@@ -10,7 +10,7 @@
 
 一个自托管（Self-hosted）、支持多用户的私人财务 CFO Agent：<br>
 iPhone 快捷指令把账单截图直传服务端 → OCR 与规则解析 → 每人一个 SQLite 账本 → Web 财务大脑 + LLM 对话。<br>
-一套应用、一个域名，注册即用；跑在自己的 Mac 上（OCR 全程离线），或者部署到服务器 7×24 常驻。
+一套应用、一个域名，注册即用；跑在自己的 Mac 上，或者部署到服务器 7×24 常驻，OCR 都在本机离线完成。
 
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-black?logo=apple)](#-快速上手)
 [![Python](https://img.shields.io/badge/python-3.x-3776AB?logo=python&logoColor=white)](#-快速上手)
@@ -52,7 +52,7 @@ iPhone 快捷指令把账单截图直传服务端 → OCR 与规则解析 → �
 |---|---|---|
 | 📸 | **近乎无感的采集** | 支付后点一下 iPhone 快捷指令，截图经 HTTPS 直传账本，几秒后弹通知告诉你记了多少；不用配邮箱 |
 | 👥 | **多用户，一套部署** | 注册登录、邀请码、每人独立账本；一个进程、一个端口、一个域名服务所有人 |
-| 🔍 | **可插拔 OCR** | macOS 上走系统 Vision，免费、离线、截图不出本机；部署到 Linux 时切换到阿里云 OCR |
+| 🔍 | **本地 OCR，零调用费** | 默认 RapidOCR（PP-OCRv6），本机 CPU 推理：免费、离线、截图不出服务器；macOS Vision 和阿里云 OCR 可按需切换 |
 | 🧾 | **混合智能解析** | 本地抽取金额、时间、商户和订单号；规则、商户记忆与 DeepSeek 共同补全消费分类 |
 | 🧠 | **财务大脑 Web UI** | 今日/本周/本月/全部四周期联动：总支出、场景权重、现金流趋势、预算进度 |
 | 💬 | **可对话的账本** | 接入 DeepSeek，直接问「这个月最大的支出是什么」，回答基于真实账本数据 |
@@ -71,7 +71,7 @@ iPhone 快捷指令把账单截图直传服务端 → OCR 与规则解析 → �
 1. **支付完成**，打开微信/支付宝的账单详情页；
 2. **触发快捷指令「记一笔」**——截图，并带着你的上传密钥 POST 到 `/api/v1/captures`；
 3. 服务端按内容哈希把截图存进**你的账本目录**，登记一个识别任务（同一张图重复上传不会重复记账）；
-4. **OCR** 识别截图（macOS 走系统 Vision，Linux 走阿里云），原文留档到 `data/ocr_texts/`；
+4. **OCR** 识别截图（默认本机 RapidOCR，离线、免费），原文留档到 `data/ocr_texts/`；
 5. **规则解析**出金额、时间、商户等事实字段，生成交易唯一 ID，**幂等写入 SQLite**；几秒内把结果回给手机，弹出「已记账 ¥32.50 · 美团外卖」；
 6. 本地规则与商户记忆先完成分类，陌生消费由后台 DeepSeek 使用裁剪字段补全；
 7. 网页刷新统计、流水、趋势与预算进度；
@@ -106,6 +106,7 @@ cd my-cfo-agent
 git clone https://github.com/jeanzxiang-xjz/my-cfo-agent.git
 cd my-cfo-agent
 cp cfo_agent_poc/.env.example cfo_agent_poc/.env
+pip3 install -r cfo_agent_poc/requirements.txt   # RapidOCR（OCR 模型随包附带）和 Pillow
 ```
 
 编辑 `cfo_agent_poc/.env`：
@@ -188,30 +189,42 @@ curl http://127.0.0.1:8091/health
 </details>
 
 <details>
-<summary><b>部署到 Linux 服务器（HTTPS 域名 + 阿里云 OCR）</b></summary>
+<summary><b>部署到 Linux 服务器（HTTPS 域名）</b></summary>
 
-macOS 之外没有 Apple Vision，OCR 需要换后端。`CFO_OCR_PROVIDER` 默认 `auto`：
-macOS 走 Vision，其它系统走阿里云通用文字识别，也可显式指定 `vision` / `aliyun`。
+OCR 默认用 RapidOCR，和 Mac 上一样在本机 CPU 上跑，不需要任何云服务密钥，也没有调用费。
+`CFO_OCR_PROVIDER` 默认 `auto`（即 `rapidocr`），也可显式指定 `vision`（仅 macOS）或 `aliyun`（按次计费的后备）。
 
 ```bash
-# 依赖只有两样：阿里云 OCR SDK，和 Pillow（直传截图识别完转成 WebP 留底，省存储）
-# 项目其余部分仍是纯标准库
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r cfo_agent_poc/requirements.txt
-python -c "from PIL import features; print(features.check('webp'))"   # 应输出 True
+# 自检：两条都应输出 True
+python -c "from PIL import features; print(features.check('webp'))"
+python -c "import sys; sys.path.insert(0, 'cfo_agent_poc'); import ocr_providers; print(ocr_providers.warm_up())"
 ```
 
-没装 Pillow 也能照常记账，只是截图按原图保存、省不了空间。
+- RapidOCR 常驻内存约 0.5GB，建议服务器至少 2GB 内存。推理线程数默认等于 CPU 核数，可用 `CFO_OCR_THREADS` 调整。
+- 服务启动时会在后台预热模型，第一张截图不用等模型加载。
+- 没装 Pillow 也能照常记账，只是截图按原图保存、省不了空间。
 
-在 `cfo_agent_poc/.env` 里补上（用**仅授予 OCR 权限的 RAM 子用户**，别用主账号 AccessKey）：
+在 `cfo_agent_poc/.env` 里补上对外访问地址：
+
+```
+CFO_PUBLIC_BASE_URL=https://cfo.example.com
+```
+
+<details>
+<summary>需要切回阿里云 OCR 时</summary>
+
+用**仅授予 OCR 权限的 RAM 子用户**，别用主账号 AccessKey：
 
 ```
 CFO_OCR_PROVIDER=aliyun
 ALIBABA_CLOUD_ACCESS_KEY_ID=...
 ALIBABA_CLOUD_ACCESS_KEY_SECRET=...
 CFO_OCR_REGION=cn-hangzhou
-CFO_PUBLIC_BASE_URL=https://cfo.example.com
 ```
+
+</details>
 
 应用只监听 `127.0.0.1:8091`，由反向代理统一对外提供 HTTPS 域名。`cfo_agent_poc/deploy/` 里有现成的配置：
 
@@ -221,7 +234,7 @@ CFO_PUBLIC_BASE_URL=https://cfo.example.com
 | `nginx.conf.example` | 已有 Nginx 时用；**必须转发 `Host` 头**，否则网页上的保存、上传会被当成跨站请求拒掉 |
 | `cfo-web.service` | systemd 服务，开机自启、挂了自动拉起 |
 
-阿里云 OCR 不支持 HEIC/HEIF；iPhone 截屏本身是 PNG，正常不会遇到。
+上传只收 PNG / JPEG；iPhone 截屏本身是 PNG，正常不会遇到 HEIC。
 
 > 前端产物 `dist/` 不在版本库里，建议在开发机 `npm run build` 后上传，
 > 服务器就不必安装 Node 工具链。
@@ -246,7 +259,7 @@ CFO_PUBLIC_BASE_URL=https://cfo.example.com
 
 - **采集用「快捷指令 + HTTPS 直传」而不是写手机 App 或走邮件**——快捷指令零安装成本；直传比「发邮件 → 服务端拉 IMAP」少了邮箱配置这一整步，结果还能当场弹回手机。手机上只放一把**只写不读**的上传密钥，丢了也看不到账。
 - **数据隔离用「一人一库」而不是一张大表加 `user_id`**——每个用户一个账本目录，布局和单机版完全一样：现有 SQL 一行不用改，隔离是物理层面的，导出、注销、备份、迁移都只是操作一个目录。
-- **OCR 做成可插拔而不是绑死一家**（`ocr_providers.py`）——macOS 上默认用系统 Vision：本地、免费、中文账单识别质量好，截图不出本机；但 Vision 是 Apple 独有的，要 7×24 常驻就得上 Linux 服务器，那里换成阿里云 OCR。对外只暴露 `ocr_image(path) -> str` 一个函数，下游解析器对换了哪家毫不知情。
+- **OCR 做成可插拔而不是绑死一家**（`ocr_providers.py`）——默认用 RapidOCR（PP-OCRv6 + ONNX Runtime），本机 CPU 推理、免费，Mac 和 Linux 跑同一个引擎，本地调好的解析规则上线不走样；按 2 核小内存服务器调过参（检测缩图、逐行识别、关掉 ONNX 的形状缓存），可以用 `eval_ocr_backends.py` 拿历史账单回归。macOS Vision 和阿里云 OCR 留作可选后端。对外只暴露 `ocr_image(path) -> str` 一个函数，下游解析器对换了哪家毫不知情。
 - **入库用规则解析而不是让 LLM 直接写库**——账单字段结构稳定，规则更可控、可解释、零 token 成本；大模型只负责「对话分析」这一层。
 - **后端用 Python 标准库 + SQLite**——不需要重框架；每个账本一个文件，好备份、可直接用 SQL 查询。请求进来先认证，再把「当前账本」绑定到这次请求上，没绑定就直接报错，不会回退到某个默认库。
 
@@ -286,7 +299,7 @@ CFO_PUBLIC_BASE_URL=https://cfo.example.com
 
 > 已知边界：
 > - 对话链路会把部分交易上下文发给 DeepSeek。若需要完全本地化，可将 LLM 替换为本地模型（见 Roadmap）。
-> - **`CFO_OCR_PROVIDER=aliyun` 时，账单截图会上传给阿里云 OCR**——这是在 Linux 上换取 7×24 常驻的代价。留在 macOS 用 Vision，截图就始终不出本机。
+> - 默认 OCR 在服务器本机完成，截图不出服务器；**只有设置 `CFO_OCR_PROVIDER=aliyun` 时，账单截图才会上传给阿里云 OCR**。
 > - 部署到公网服务器时，所有用户的账本和平台的 API Key 都在那台机器上，运维者能看到全部数据。请务必走 HTTPS，并保管好服务器访问权限。
 
 ## 🗺️ Roadmap

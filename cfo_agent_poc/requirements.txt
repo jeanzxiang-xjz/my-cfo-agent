@@ -1,11 +1,16 @@
-# 阿里云 SDK 仅 Linux 服务器部署需要（CFO_OCR_PROVIDER=aliyun）。
-# macOS 本地开发走 Apple Vision，不装这些也能跑。
+# OCR 默认走 RapidOCR：本机 CPU 推理，免费、离线，PP-OCRv6 模型随包附带，不用另外下载。
+# onnxruntime 不锁死版本：模型是 opset 11，老版本也能跑，让 pip 按服务器的 Python / glibc 挑能装的。
+# 回归验证过 1.20 和 1.31，识别结果一致；新版明显更快（1.31 比 1.20 快一倍），服务器尽量用 Python 3.11+ 装到新版。
+# RapidOCR 版本锁死：ocr_providers 包了它生成 ONNX 会话选项的方法来省内存，升级前先跑 eval_ocr_backends.py 回归。
 # Pillow 用来把截图转成 WebP 留底；没装时照常记账，只是原图原样保存、省不了空间。
+# 阿里云 SDK 只在 CFO_OCR_PROVIDER=aliyun 时用到（按次计费的后备），默认不会调用。
 #
 #   python3 -m venv .venv && . .venv/bin/activate
 #   pip install -r cfo_agent_poc/requirements.txt
 
+rapidocr==3.10.0
+onnxruntime>=1.16,<2
+Pillow>=9.1
 alibabacloud_ocr_api20210707==3.1.2
 alibabacloud_tea_openapi
 alibabacloud_tea_util
-Pillow>=9.1

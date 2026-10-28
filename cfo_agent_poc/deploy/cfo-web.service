@@ -14,7 +14,7 @@ Wants=network-online.target
 Type=simple
 User=cfo
 WorkingDirectory=/srv/my-cfo-agent
-# .env 里放 CFO_HOME、CFO_PUBLIC_BASE_URL、DeepSeek 与阿里云 OCR 的密钥（server.py 启动时自己会读）
+# .env 里放 CFO_HOME、CFO_PUBLIC_BASE_URL、DeepSeek 密钥（server.py 启动时自己会读）；OCR 默认本机 RapidOCR，不用配密钥
 ExecStart=/srv/my-cfo-agent/.venv/bin/python -u cfo_agent_poc/web_app/server.py --host 127.0.0.1 --port 8091
 Restart=on-failure
 RestartSec=3
