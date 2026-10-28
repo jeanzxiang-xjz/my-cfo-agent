@@ -194,7 +194,7 @@ curl http://127.0.0.1:8091/health
 <summary><b>Deploying to a Linux server (HTTPS domain)</b></summary>
 
 OCR uses RapidOCR by default and runs on the server's own CPU, just like on a Mac — no cloud keys, no per-call fees.
-`CFO_OCR_PROVIDER` defaults to `auto` (= `rapidocr`); you can also set `vision` (macOS only) or `aliyun` (a pay-per-call fallback).
+Set `CFO_OCR_PROVIDER=rapidocr` in `.env` (it is also the default when left blank); you can instead set `vision` (macOS only) or `aliyun` (a pay-per-call fallback). The old `auto` value is no longer accepted; change it to `rapidocr`.
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate

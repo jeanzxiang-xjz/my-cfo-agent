@@ -192,7 +192,7 @@ curl http://127.0.0.1:8091/health
 <summary><b>部署到 Linux 服务器（HTTPS 域名）</b></summary>
 
 OCR 默认用 RapidOCR，和 Mac 上一样在本机 CPU 上跑，不需要任何云服务密钥，也没有调用费。
-`CFO_OCR_PROVIDER` 默认 `auto`（即 `rapidocr`），也可显式指定 `vision`（仅 macOS）或 `aliyun`（按次计费的后备）。
+`.env` 里写明 `CFO_OCR_PROVIDER=rapidocr`（不填也是它）；也可指定 `vision`（仅 macOS）或 `aliyun`（按次计费的后备）。旧配置里的 `auto` 已不再支持，请改成 `rapidocr`。
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate

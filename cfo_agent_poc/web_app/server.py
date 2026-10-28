@@ -2990,8 +2990,8 @@ class CFORequestHandler(SimpleHTTPRequestHandler):
 
 def _warm_up_ocr() -> None:
     try:
-        if ocr_providers.warm_up():
-            print("[CFO] OCR 模型已预热")
+        provider = ocr_providers.provider_name()
+        print(f"[CFO] OCR 后端：{provider}" + ("，模型已预热" if ocr_providers.warm_up() else ""))
     except Exception as exc:  # 预热失败不挡启动，第一张截图识别时会再报具体错误
         print(f"[CFO] OCR 预热失败：{type(exc).__name__}: {str(exc)[:200]}")
 

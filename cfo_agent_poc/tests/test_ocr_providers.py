@@ -248,15 +248,22 @@ class RapidOCRReadingOrderTests(unittest.TestCase):
 
 
 class ProviderSelectionTests(unittest.TestCase):
-    def test_auto_uses_rapidocr_on_every_platform(self) -> None:
-        for configured in ("", "auto", "AUTO"):
+    def test_rapidocr_when_configured_or_left_blank(self) -> None:
+        for configured in ("rapidocr", "RapidOCR", " rapidocr ", ""):
             with patch.dict(os.environ, {"CFO_OCR_PROVIDER": configured}):
-                self.assertEqual(ocr_providers._provider_name(), "rapidocr")
+                self.assertEqual(ocr_providers.provider_name(), "rapidocr")
 
     def test_aliyun_and_vision_only_when_asked_for(self) -> None:
         for configured in ("aliyun", "vision"):
             with patch.dict(os.environ, {"CFO_OCR_PROVIDER": configured}):
-                self.assertEqual(ocr_providers._provider_name(), configured)
+                self.assertEqual(ocr_providers.provider_name(), configured)
+
+    def test_auto_is_no_longer_accepted(self) -> None:
+        # auto 以前在 Linux 上意味着阿里云；现在要求写明后端，旧配置启动预热时就报出来
+        with patch.dict(os.environ, {"CFO_OCR_PROVIDER": "auto"}), self.assertRaises(OCRError) as ctx:
+            ocr_providers.warm_up()
+
+        self.assertIn("rapidocr / vision / aliyun", str(ctx.exception))
 
     def test_unknown_provider_lists_the_choices(self) -> None:
         with patch.dict(os.environ, {"CFO_OCR_PROVIDER": "tesseract"}), self.assertRaises(OCRError) as ctx:

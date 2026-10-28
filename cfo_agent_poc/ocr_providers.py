@@ -54,29 +54,33 @@ class OCRError(RuntimeError):
     """OCR 失败。消息会经截图上传接口透出到快捷指令通知和网页，所以写成人话。"""
 
 
-def _provider_name() -> str:
-    configured = os.environ.get("CFO_OCR_PROVIDER", "").strip().lower()
-    if configured and configured != "auto":
-        return configured
-    return "rapidocr"
+PROVIDERS = ("rapidocr", "vision", "aliyun")
+
+
+def provider_name() -> str:
+    """CFO_OCR_PROVIDER 写明用哪个后端，没填才默认 rapidocr。
+
+    写错的值（包括早先的 auto）直接报错，不悄悄换后端；服务启动预热时就会打到日志里。"""
+    configured = os.environ.get("CFO_OCR_PROVIDER", "").strip().lower() or "rapidocr"
+    if configured not in PROVIDERS:
+        raise OCRError(f"未知的 OCR 后端 {configured!r}，CFO_OCR_PROVIDER 只支持 {' / '.join(PROVIDERS)}。")
+    return configured
 
 
 def ocr_image(image_path: str) -> str:
-    provider = _provider_name()
+    provider = provider_name()
     if provider == "rapidocr":
         return _ocr_rapidocr(image_path)
     if provider == "vision":
         return _ocr_vision(image_path)
-    if provider == "aliyun":
-        return _ocr_aliyun(image_path)
-    raise OCRError(f"未知的 OCR 后端 {provider!r}，CFO_OCR_PROVIDER 只支持 auto / rapidocr / vision / aliyun。")
+    return _ocr_aliyun(image_path)
 
 
 def warm_up() -> bool:
     """服务启动时预热：提前加载模型、跑一次小图，第一张上传的截图就不用等。
 
     只有 rapidocr 需要预热，其它后端直接返回 False。"""
-    if _provider_name() != "rapidocr":
+    if provider_name() != "rapidocr":
         return False
     import cv2
     import numpy as np
@@ -197,7 +201,7 @@ def _ocr_vision(image_path: str) -> str:
     except FileNotFoundError as exc:
         raise OCRError(
             "找不到 swift 命令。Apple Vision OCR 只能在装了 Xcode 命令行工具的 macOS 上跑；"
-            "在 Linux 上请设置 CFO_OCR_PROVIDER=aliyun。"
+            "在 Linux 上请设置 CFO_OCR_PROVIDER=rapidocr。"
         ) from exc
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr or "").strip() or f"退出码 {exc.returncode}"
