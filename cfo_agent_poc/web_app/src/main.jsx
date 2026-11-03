@@ -3,6 +3,7 @@ import "../styles.css";
 import "../vendor/gsap.min.js";
 import App, { CRITICAL_IMAGE_URLS } from "./App.jsx";
 import { PHOSPHOR_ICONS } from "./phosphor-icons.js";
+import { startSmoothScroll } from "./smooth-scroll.js";
 
 document.body.classList.add("app-loading");
 
@@ -33,6 +34,7 @@ window.cfoPhosphorIcons = PHOSPHOR_ICONS;
 window.cfoStaticReady = Promise.all(CRITICAL_IMAGE_URLS.map(preloadImage));
 
 createRoot(document.getElementById("root")).render(<App />);
+startSmoothScroll();
 
 requestAnimationFrame(async () => {
   await import("./motion.js");
