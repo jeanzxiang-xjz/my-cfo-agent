@@ -9,7 +9,7 @@ import Lenis from "lenis";
  * - prefers-reduced-motion 下不启用。
  * 不引入 lenis.css：它会在 stop() 时给 html 加 overflow: clip，和 body 上现有的锁滚动、滚动条补偿冲突。
  */
-const LERP = 0.18;
+const LERP = 0.24;
 const LOCK_CLASSES = ["modal-open", "chat-expanded-open"];
 
 export function startSmoothScroll() {
