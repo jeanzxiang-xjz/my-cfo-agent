@@ -3395,174 +3395,186 @@ body.chat-expanded-open {
 
 /* ============================== 账本 ============================== */
 
+/* #ledger 是 grid，子项默认 min-width:auto 会被整条分段的内容宽撑开；归零后底槽才会收窄、横向滚动。 */
 .filter-bar {
   position: relative;
+  min-width: 0;
 }
 
 .filter-strip {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
   gap: var(--sp-3);
 }
 
-.filter-strip-scroll {
-  display: flex;
-  gap: 6px;
-  min-width: 0;
-  overflow-x: auto;
-  padding-bottom: 2px;
-  scrollbar-width: none;
-  align-items: center;
+.filter-strip > .ledger-category-settings {
+  flex: none;
+  margin-left: auto;
 }
 
-.filter-strip-scroll::-webkit-scrollbar {
+/* — 分类分段控件：和顶部周期控件同一套语言，一条底槽 + 一个跟着选中段滑动的滑块。
+   滑块的位置、宽度、颜色由 legacy-controller.js 的 moveFilterThumb() 写入，
+   切换时从旧位置补间过去（renderFilters 整段重建，CSS 过渡接不上）。 — */
+.filter-track {
+  position: relative;
+  display: flex;
+  /* 宽度随内容，放不下时收窄并横向滚动。不能写 width: fit-content：
+     那样它的最小宽度就是整条内容宽，窄屏会把整行连同齿轮一起撑出屏幕。 */
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--ink-2);
+  box-shadow: var(--edge);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.filter-track::-webkit-scrollbar {
   display: none;
+}
+
+.filter-thumb {
+  --thumb-color: var(--jade-7);
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  width: 0;
+  border: 1px solid color-mix(in srgb, var(--thumb-color) 36%, transparent);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--thumb-color) 16%, var(--ink-4));
+  box-shadow: var(--shadow-1), var(--edge);
+  pointer-events: none;
+}
+
+/* 「全部」不是某个分类，滑块用周期控件那种中性灰。 */
+.filter-thumb.is-neutral {
+  border-color: transparent;
+  background: var(--ink-5);
 }
 
 .ledger-filter-chip,
 .ledger-filter-more {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
   flex: none;
+  align-items: center;
+  gap: 6px;
   min-height: 30px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-full);
-  background: var(--ink-2);
+  padding: 0 11px;
+  border-radius: var(--r-sm);
   color: var(--muted);
   font-size: var(--fs-xs);
   font-weight: 500;
   white-space: nowrap;
   transition:
     color var(--dur-2) var(--ease-out),
-    border-color var(--dur-2) var(--ease-out),
-    background var(--dur-2) var(--ease-out);
+    background-color var(--dur-2) var(--ease-out),
+    border-color var(--dur-2) var(--ease-out);
 }
 
-.ledger-filter-chip:hover,
-.ledger-filter-more:hover {
-  border-color: var(--line-strong);
-  background: var(--ink-4);
-  color: var(--text);
-}
-
-.ledger-filter-chip.active {
-  border-color: transparent;
-  background: var(--ink-11);
-  color: var(--ink-0);
-  font-weight: 500;
-}
-
-/* 商户约束是从分析卡片带过来的，长得像分类胶囊但必须能一眼看出可关闭。 */
-.ledger-filter-chip.is-merchant {
+.chip-icon {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 200px;
-  border-color: var(--jade-line);
-  background: var(--jade-bg);
-  color: var(--jade-9);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ledger-filter-chip.is-merchant span {
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1;
-}
-
-.ledger-filter-chip.is-merchant:hover {
-  border-color: var(--jade-7);
-  background: var(--jade-bg);
-  color: var(--jade-9);
-}
-
-.ledger-filter-chip.is-merchant:hover span {
-  color: var(--jade-9);
-}
-
-.ledger-filter-more {
   flex: none;
-  min-height: 30px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-full);
-  background: var(--ink-2);
-  color: var(--muted);
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  white-space: nowrap;
-  transition:
-    color var(--dur-2) var(--ease-out),
-    border-color var(--dur-2) var(--ease-out),
-    background var(--dur-2) var(--ease-out);
+  transition: color var(--dur-2) var(--ease-out);
 }
 
-.ledger-filter-chip:hover,
+.ledger-filter-chip svg.category-symbol {
+  width: 16px;
+  height: 16px;
+}
+
+.filter-track .ledger-filter-chip:not(.active):hover,
 .ledger-filter-more:hover {
-  border-color: var(--line-strong);
-  background: var(--ink-4);
+  background: color-mix(in srgb, var(--ink-4) 55%, transparent);
   color: var(--text);
 }
 
+.ledger-filter-chip:hover .chip-icon {
+  color: color-mix(in srgb, var(--chip-color, currentColor) 72%, var(--text));
+}
+
 .ledger-filter-chip.active {
-  border-color: transparent;
-  background: var(--ink-11);
-  color: var(--ink-0);
-  font-weight: 500;
+  color: var(--text-strong);
 }
 
-/* 商户维度是从分析卡片带过来的临时约束，长得像分类胶囊但必须能一眼看出可关闭。 */
-.ledger-filter-chip.is-merchant {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 200px;
-  border-color: var(--jade-line);
-  background: var(--jade-bg);
-  color: var(--jade-9);
-  overflow: hidden;
-  text-overflow: ellipsis;
+.ledger-filter-chip.active .chip-icon {
+  color: var(--chip-color, currentColor);
 }
 
-.ledger-filter-chip.is-merchant span {
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1;
+/* 「更多分类」：底槽最后一段，用分隔线和分类段隔开；展开时箭头翻转。 */
+.filter-track-divider {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: var(--line);
 }
 
-.ledger-filter-chip.is-merchant:hover {
-  border-color: var(--jade-7);
-  background: var(--jade-bg);
-  color: var(--jade-9);
-}
-
-.ledger-filter-chip.is-merchant:hover span {
-  color: var(--jade-9);
-}
-
-.ledger-filter-more {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.ledger-filter-more span {
+.filter-more-count {
   color: var(--muted-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+svg.filter-more-caret {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  transition: transform var(--dur-3) var(--ease-out);
 }
 
 .ledger-filter-more.active {
-  border-color: var(--line-strong);
   background: var(--ink-4);
   color: var(--text-strong);
 }
 
+.ledger-filter-more.active svg.filter-more-caret {
+  transform: rotate(180deg);
+}
+
+/* 商户约束是从分析卡片带过来的，长得像分类胶囊但必须能一眼看出可关闭，所以不进底槽。 */
+.ledger-filter-chip.is-merchant {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 200px;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--jade-line);
+  border-radius: var(--r-full);
+  background: var(--jade-bg);
+  color: var(--jade-9);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ledger-filter-chip.is-merchant span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.ledger-filter-chip.is-merchant:hover {
+  border-color: var(--jade-7);
+  color: var(--jade-9);
+}
+
+.ledger-filter-chip.is-merchant:hover span {
+  color: var(--jade-9);
+}
+
+/* — 更多分类弹层：图标瓷砖网格，展开时瓷砖依次浮现 — */
 .filter-popover {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
   z-index: var(--z-popover);
-  width: min(680px, 100%);
+  width: min(720px, 100%);
   padding: var(--sp-5);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
@@ -3603,15 +3615,60 @@ body.chat-expanded-open {
 }
 
 .filter-popover-grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
   gap: 6px;
+}
+
+.filter-popover .ledger-filter-chip {
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  background: var(--ink-1);
+}
+
+.filter-popover .chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-popover .ledger-filter-chip:not(.active):hover {
+  border-color: var(--line-strong);
+  background: var(--ink-3);
+  color: var(--text);
+}
+
+.filter-popover .ledger-filter-chip.active {
+  border-color: color-mix(in srgb, var(--chip-color) 45%, transparent);
+  background: color-mix(in srgb, var(--chip-color) 14%, var(--ink-2));
+}
+
+/* 每次展开都从头播：.open 加上的那一刻动画开始，--i 决定先后，最多压到 12 个间隔。 */
+.filter-popover.open .ledger-filter-chip {
+  animation: filterTileIn var(--dur-3) var(--ease-out) backwards;
+  animation-delay: calc(min(var(--i, 0), 12) * 16ms + 40ms);
+}
+
+@keyframes filterTileIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* 全局的减弱动效只把时长压到 0.01ms，延迟还在，瓷砖会空白一小段：这里直接关掉。 */
+@media (prefers-reduced-motion: reduce) {
+  .filter-popover.open .ledger-filter-chip {
+    animation: none;
+  }
 }
 
 .filter-popover-empty {
   color: var(--muted-dim);
   font-size: var(--fs-xs);
-  line-height: 30px;
+  line-height: 34px;
 }
 
 .filter-popover-grid.is-disabled-categories .ledger-filter-chip:not(.active) {

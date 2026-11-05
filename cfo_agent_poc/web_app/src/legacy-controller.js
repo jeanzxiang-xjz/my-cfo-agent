@@ -1563,12 +1563,20 @@ function categoryById(category) {
   return state.categories.find((item) => item.id === category) || null;
 }
 
+/**
+ * 分类筛选的一段：图标 + 名称。--chip-color 是这个分类的颜色，选中时图标和滑块都染这个色；
+ * --i 只在弹层瓷砖上用，控制依次入场的先后。
+ */
 function filterButton(category, options = {}) {
-  const label = category === "all" ? "全部" : categoryLabel(category);
+  const isAll = category === "all";
+  const label = isAll ? "全部" : categoryLabel(category);
+  const active = state.filter === category;
   const classes = ["ledger-filter-chip"];
-  if (state.filter === category) classes.push("active");
+  if (active) classes.push("active");
   if (options.current) classes.push("current-extra");
-  return `<button class="${classes.join(" ")}" data-filter="${escapeHtml(category)}" type="button" aria-pressed="${state.filter === category}">${escapeHtml(label)}</button>`;
+  const icon = isAll ? ph("list-bullets", "category-symbol") : categoryIcon(categoryById(category)?.icon_key);
+  const style = `--chip-color:${isAll ? "var(--text-strong)" : categoryColor(category)}${options.index === undefined ? "" : `;--i:${options.index}`}`;
+  return `<button class="${classes.join(" ")}" data-filter="${escapeHtml(category)}" type="button" aria-pressed="${active}" style="${style}"><span class="chip-icon">${icon}</span><span class="chip-label">${escapeHtml(label)}</span></button>`;
 }
 
 function paymentLabel(app) {
@@ -4817,40 +4825,52 @@ function renderFilters() {
   const enabledOtherCategories = otherCategories.filter((category) => categoryById(category)?.is_enabled);
   const selectedIsExtra = state.filter !== "all" && otherCategories.includes(state.filter);
   const promoted = state.ledgerFilterPromoted && state.filter !== "all" ? state.filter : "";
+  // 弹层瓷砖跨分组连续编号，依次入场才是一条连贯的波浪。
+  let tileIndex = 0;
+  const tiles = (categories) => categories.map((category) => filterButton(category, { index: tileIndex++ })).join("");
+
+  const previous = captureFilterLayout();
+  // 弹层先按「重建前」的开合状态画出来，再切到目标状态，收起 / 展开的过渡才播得出来。
+  const shownOpen = previous ? previous.open : state.ledgerFilterExpanded;
+  const moreCount = `+${otherCategories.length}`;
 
   $("filterBar").innerHTML = `
     <div class="filter-strip">
-      <div class="filter-strip-scroll">
-        ${state.merchantFocus ? `
-          <button class="ledger-filter-chip is-merchant" data-clear-merchant type="button" aria-label="取消按商户「${escapeHtml(state.merchantFocus)}」筛选">
-            ${escapeHtml(state.merchantFocus)} <span aria-hidden="true">×</span>
-          </button>
-        ` : ""}
+      ${state.merchantFocus ? `
+        <button class="ledger-filter-chip is-merchant" data-clear-merchant type="button" aria-label="取消按商户「${escapeHtml(state.merchantFocus)}」筛选">
+          ${escapeHtml(state.merchantFocus)} <span aria-hidden="true">×</span>
+        </button>
+      ` : ""}
+      <div class="filter-track">
+        <span class="filter-thumb" aria-hidden="true"></span>
         ${filterButton("all")}
         ${promoted ? filterButton(promoted, { current: selectedIsExtra }) : ""}
         ${primaryCategories.filter((category) => category !== promoted).map((category) => filterButton(category)).join("")}
         ${selectedIsExtra && !promoted ? filterButton(state.filter, { current: true }) : ""}
-      <button class="ledger-filter-more${state.ledgerFilterExpanded ? " active" : ""}" data-filter-action="toggle-more" type="button" aria-expanded="${state.ledgerFilterExpanded ? "true" : "false"}">
-        更多分类 <span aria-hidden="true">${state.ledgerFilterExpanded ? "收起" : `+${otherCategories.length}`}</span>
-      </button>
+        <span class="filter-track-divider" aria-hidden="true"></span>
+        <button class="ledger-filter-more${shownOpen ? " active" : ""}" data-filter-action="toggle-more" type="button" aria-expanded="${shownOpen ? "true" : "false"}">
+          <span class="chip-label">更多分类</span>
+          <span class="filter-more-count" data-count="${moreCount}" aria-hidden="true">${shownOpen ? "收起" : moreCount}</span>
+          ${ph("caret-down", "filter-more-caret")}
+        </button>
       </div>
       <button class="ledger-category-settings" type="button" data-category-manage aria-label="分类管理：新增、改名、图标与常用排序" title="分类管理：新增、改名、图标与常用排序">
         ${ph("gear-six")}
         <span class="ledger-settings-tip" role="tooltip">分类管理 · 名称、图标与排序</span>
       </button>
     </div>
-      <div class="filter-popover${state.ledgerFilterExpanded ? " open" : ""}">
+      <div class="filter-popover${shownOpen ? " open" : ""}">
         <div class="filter-popover-section">
           <div class="filter-popover-title">常用分类</div>
           <div class="filter-popover-grid">
-            ${primaryCategories.map((category) => filterButton(category)).join("")}
+            ${tiles(primaryCategories)}
             ${primaryCategories.length ? "" : `<span class="filter-popover-empty">尚未设置常用分类</span>`}
           </div>
         </div>
         <div class="filter-popover-section">
           <div class="filter-popover-title">其他分类</div>
           <div class="filter-popover-grid">
-            ${enabledOtherCategories.map((category) => filterButton(category)).join("")}
+            ${tiles(enabledOtherCategories)}
             ${enabledOtherCategories.length ? "" : `<span class="filter-popover-empty">没有其他启用分类</span>`}
           </div>
         </div>
@@ -4858,15 +4878,121 @@ function renderFilters() {
           <div class="filter-popover-section">
             <div class="filter-popover-title">历史分类</div>
             <div class="filter-popover-grid is-disabled-categories">
-              ${disabledCategories.map((category) => filterButton(category)).join("")}
+              ${tiles(disabledCategories)}
             </div>
           </div>
         ` : ""}
       </div>
   `;
-  // 提前的胶囊紧挨着「全部」，筛选栏若之前被横向滚走，拉回起点它才在视野里。
-  if (promoted) $("filterBar").querySelector(".filter-strip-scroll")?.scrollTo({ left: 0 });
+  replayFilterLayout(previous);
+  if (shownOpen !== state.ledgerFilterExpanded) {
+    // 先让浏览器把「旧状态」算一遍样式，再切换，过渡才有起点。
+    void $("filterBar").querySelector(".filter-popover")?.offsetWidth;
+    setFilterPopoverOpen(state.ledgerFilterExpanded);
+  }
   syncCategoryStackSelection();
+}
+
+/* ---------------------- 分类筛选：滑块与 FLIP 过渡 ---------------------- */
+// renderFilters() 每次都整段重建，CSS 过渡没有可以延续的元素：重建前记下滑块和每一段的位置，
+// 重建后从旧位置补间到新位置。位置都用「底槽内容坐标」（含横向滚动），所以底槽滚到哪都对得上。
+const FILTER_MOTION_MS = 360;
+const FILTER_MOTION_EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
+
+/** 元素在底槽内容坐标里的左边界：用视觉位置（含正在进行的位移），连点时能从半路接着滑。 */
+function trackContentLeft(track, element) {
+  return element.getBoundingClientRect().left - track.getBoundingClientRect().left - track.clientLeft + track.scrollLeft;
+}
+
+function captureFilterLayout() {
+  const bar = $("filterBar");
+  const track = bar?.querySelector(".filter-track");
+  if (!track) return null;
+  const segments = new Map();
+  track.querySelectorAll("[data-filter], [data-filter-action]").forEach((node) => {
+    segments.set(node.dataset.filter ?? node.dataset.filterAction, trackContentLeft(track, node));
+  });
+  const thumb = track.querySelector(".filter-thumb");
+  const thumbStyle = thumb ? getComputedStyle(thumb) : null;
+  return {
+    open: Boolean(bar.querySelector(".filter-popover.open")),
+    scrollLeft: track.scrollLeft,
+    segments,
+    thumb: thumb && thumbStyle ? {
+      x: trackContentLeft(track, thumb),
+      width: thumb.getBoundingClientRect().width,
+      background: thumbStyle.backgroundColor,
+      border: thumbStyle.borderColor,
+    } : null,
+  };
+}
+
+function replayFilterLayout(previous) {
+  const track = $("filterBar")?.querySelector(".filter-track");
+  if (!track) return;
+  if (previous) track.scrollLeft = previous.scrollLeft;
+  const animate = Boolean(previous) && !prefersReducedMotion();
+  if (animate) {
+    track.querySelectorAll("[data-filter], [data-filter-action]").forEach((node) => {
+      const before = previous.segments.get(node.dataset.filter ?? node.dataset.filterAction);
+      if (before === undefined) {
+        // 从弹层提到前面的那一段：原地长出来，旁边的段同时让位。
+        node.animate(
+          [{ opacity: 0, transform: "scale(0.92)" }, { opacity: 1, transform: "none" }],
+          { duration: FILTER_MOTION_MS, easing: FILTER_MOTION_EASE },
+        );
+        return;
+      }
+      const dx = before - node.offsetLeft;
+      if (Math.abs(dx) < 0.5) return;
+      node.animate(
+        [{ transform: `translateX(${dx}px)` }, { transform: "none" }],
+        { duration: FILTER_MOTION_MS, easing: FILTER_MOTION_EASE },
+      );
+    });
+  }
+  moveFilterThumb({ from: animate ? previous.thumb : null });
+  scrollSegmentIntoView(track, track.querySelector(".ledger-filter-chip.active"), { onlyIfHidden: true });
+}
+
+/** 把滑块放到选中段下面；传入 from 时从那个位置、宽度和颜色补间过去。 */
+function moveFilterThumb({ from = null } = {}) {
+  const track = $("filterBar")?.querySelector(".filter-track");
+  const thumb = track?.querySelector(".filter-thumb");
+  const active = track?.querySelector(".ledger-filter-chip.active");
+  if (!thumb) return;
+  thumb.hidden = !active;
+  if (!active) return;
+  // 滑块的静态位置是 left:0，offsetLeft 已经是相对底槽内边距盒的，直接用。
+  const x = active.offsetLeft;
+  const width = active.offsetWidth;
+  thumb.style.setProperty("--thumb-color", active.style.getPropertyValue("--chip-color"));
+  thumb.classList.toggle("is-neutral", active.dataset.filter === "all");
+  thumb.style.width = `${width}px`;
+  thumb.style.transform = `translateX(${x}px)`;
+  if (!from) return;
+  const now = getComputedStyle(thumb);
+  if (Math.abs(from.x - x) < 0.5 && Math.abs(from.width - width) < 0.5 && from.background === now.backgroundColor) return;
+  thumb.animate(
+    [
+      { transform: `translateX(${from.x}px)`, width: `${from.width}px`, backgroundColor: from.background, borderColor: from.border },
+      { transform: `translateX(${x}px)`, width: `${width}px`, backgroundColor: now.backgroundColor, borderColor: now.borderColor },
+    ],
+    { duration: FILTER_MOTION_MS, easing: FILTER_MOTION_EASE },
+  );
+}
+
+/** 「更多分类」弹层的开合只切状态、不重建，CSS 过渡和瓷砖依次入场才播得出来。 */
+function setFilterPopoverOpen(open) {
+  state.ledgerFilterExpanded = open;
+  const bar = $("filterBar");
+  bar?.querySelector(".filter-popover")?.classList.toggle("open", open);
+  const more = bar?.querySelector('[data-filter-action="toggle-more"]');
+  if (!more) return;
+  more.classList.toggle("active", open);
+  more.setAttribute("aria-expanded", String(open));
+  const count = more.querySelector(".filter-more-count");
+  if (count) count.textContent = open ? "收起" : count.dataset.count;
 }
 
 function renderCorrectionQueue() {
@@ -5742,18 +5868,28 @@ function movePeriodThumb() {
   thumb.style.transform = `translateX(${offset}px)`;
 }
 
-/** 窄屏五段放不下时控件会横向滚动，别让选中的那段停在视野外。 */
-function scrollActivePeriodIntoView() {
-  const control = document.querySelector(".period-control");
-  const active = control?.querySelector(".period-btn.active");
+/**
+ * 分段控件放不下时会横向滚动，别让选中的那段停在视野外：滚到让它居中。
+ * onlyIfHidden：已经整段可见就不动，免得人刚点完，脚下的控件就滑走了。
+ */
+function scrollSegmentIntoView(control, active, { onlyIfHidden = false } = {}) {
   if (!control || !active) return;
   const overflow = control.scrollWidth - control.clientWidth;
   if (overflow <= 0) return;
+  const visible = active.offsetLeft >= control.scrollLeft
+    && active.offsetLeft + active.offsetWidth <= control.scrollLeft + control.clientWidth;
+  if (onlyIfHidden && visible) return;
   const target = active.offsetLeft - (control.clientWidth - active.offsetWidth) / 2;
   control.scrollTo({
     left: clamp(target, 0, overflow),
     behavior: prefersReducedMotion() ? "auto" : "smooth",
   });
+}
+
+/** 窄屏五段放不下时控件会横向滚动，别让选中的那段停在视野外。 */
+function scrollActivePeriodIntoView() {
+  const control = document.querySelector(".period-control");
+  scrollSegmentIntoView(control, control?.querySelector(".period-btn.active"));
 }
 
 /** 把 state.period 画到分段控件上：选中态、自定义段的文字、滑块、清除按钮。 */
@@ -6815,6 +6951,7 @@ function wireInteractions() {
 
   window.addEventListener("resize", () => {
     movePeriodThumb();
+    moveFilterThumb();
     // 轨道是否溢出只有量过才知道，宽度一变就要重量一次。
     syncTrackOverflow();
     // 单月 ↔ 双月是断点切换的，面板开着时要跟着重画。
@@ -6902,17 +7039,12 @@ function wireInteractions() {
     const button = event.target.closest("button");
     if (!button) return;
     if (button.hasAttribute("data-category-manage")) {
-      state.ledgerFilterExpanded = false;
-      renderFilters();
-      document.querySelector("[data-category-manage]")?.focus({ preventScroll: true });
+      setFilterPopoverOpen(false);
       openModal("categoryModal");
       return;
     }
     if (button.dataset.filterAction === "toggle-more") {
-      state.ledgerFilterExpanded = !state.ledgerFilterExpanded;
-      renderFilters();
-      document.querySelector('[data-filter-action="toggle-more"]')?.focus({ preventScroll: true });
-      window.refreshCfoMotion?.({ scope: "ledger", quiet: true });
+      setFilterPopoverOpen(!state.ledgerFilterExpanded);
       return;
     }
     if (button.hasAttribute("data-clear-merchant")) {
@@ -6979,11 +7111,17 @@ function wireInteractions() {
     (event) => {
       if (!state.ledgerFilterExpanded) return;
       if (event.target.closest?.("#filterBar")) return;
-      state.ledgerFilterExpanded = false;
-      renderFilters();
+      setFilterPopoverOpen(false);
     },
     true,
   );
+
+  // 弹层开着时 Esc 收起，焦点回到「更多分类」，键盘用户不会迷路。
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !state.ledgerFilterExpanded) return;
+    setFilterPopoverOpen(false);
+    $("filterBar").querySelector('[data-filter-action="toggle-more"]')?.focus({ preventScroll: true });
+  });
 
   $("ledgerPagination").addEventListener("click", (event) => {
     const button = event.target.closest("button");
@@ -7118,7 +7256,12 @@ function wireInteractions() {
 
   wireScrollSpy();
   movePeriodThumb();
-  if (document.fonts?.ready) document.fonts.ready.then(movePeriodThumb);
+  if (document.fonts?.ready) {
+    document.fonts.ready.then(() => {
+      movePeriodThumb();
+      moveFilterThumb();
+    });
+  }
 }
 
 /* ------------------------------- 启动 ------------------------------- */
