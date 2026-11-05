@@ -4898,6 +4898,8 @@ function renderFilters() {
 // 重建后从旧位置补间到新位置。位置都用「底槽内容坐标」（含横向滚动），所以底槽滚到哪都对得上。
 const FILTER_MOTION_MS = 360;
 const FILTER_MOTION_EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
+// 捕获阶段点空白收起弹层时记下这次点击，冒泡阶段的「点空白撤销分类」认出它就跳过。
+let filterPopoverDismissClick = null;
 
 /** 元素在底槽内容坐标里的左边界：用视觉位置（含正在进行的位移），连点时能从半路接着滑。 */
 function trackContentLeft(track, element) {
@@ -7006,12 +7008,18 @@ function wireInteractions() {
   $("categoryStack").addEventListener("touchend", clearCategoryPress, { passive: true });
   $("categoryStack").addEventListener("touchcancel", clearCategoryPress, { passive: true });
 
-  // 支出去向有选中时，点页面上的空白处＝撤销选中（同时撤掉账本的分类筛选）。
-  // 控件、整块可追溯交易和弹窗都不算空白：人跳到账本后在里面点来点去，不能把刚筛好的结果弄丢。
+  // 账本选中了某个分类时（不管本期有没有记录、支出去向里有没有这一行），点页面上的空白处＝撤销选中，
+  // 支出去向的选中态跟着同步取消。
+  // 控件、账本的内容区（分段底槽、更多分类弹层、交易表格含空状态、分页、待订正）和弹窗都不算空白：
+  // 人跳到账本后在里面点来点去，不能把刚筛好的结果弄丢；账本里要撤销有现成入口（再点一次选中段、空状态里的「清掉筛选」）。
+  // 但账本标题栏和各块之间的留白算空白：之前把整个 #ledger 排除，标题右边那片看着是空白，
+  // 点偏上落到 <main> 会撤销、点偏下落到标题栏不撤销，像是「时灵时不灵」。
   // tabindex 只认可聚焦的：<main> 为了「跳到主要内容」带着 tabindex="-1"，算进来就整页都不是空白了。
   document.addEventListener("click", (event) => {
-    if (!document.querySelector("#categoryStack .is-selected")) return;
-    if (event.target.closest('button, a, input, select, textarea, label, summary, [role="button"], [tabindex]:not([tabindex="-1"]), #ledger, .modal-backdrop')) return;
+    if (state.filter === "all") return;
+    // 这一下是用来收起「更多分类」弹层的，只收弹层，不顺手把分类也清掉。
+    if (event === filterPopoverDismissClick) return;
+    if (event.target.closest('button, a, input, select, textarea, label, summary, [role="button"], [tabindex]:not([tabindex="-1"]), .filter-track, .filter-popover, #correctionQueue, #ledger .table-wrap, #ledgerPagination, .modal-backdrop')) return;
     state.filter = "all";
     state.ledgerPage = 1;
     renderFilters();
@@ -7110,7 +7118,9 @@ function wireInteractions() {
     "click",
     (event) => {
       if (!state.ledgerFilterExpanded) return;
-      if (event.target.closest?.("#filterBar")) return;
+      // 底槽和弹层里的点击归它们自己的处理器；筛选栏其余的留白和页面别处一样，点了收起弹层。
+      if (event.target.closest?.(".filter-track, .filter-popover, [data-category-manage]")) return;
+      filterPopoverDismissClick = event;
       setFilterPopoverOpen(false);
     },
     true,
