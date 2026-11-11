@@ -14,10 +14,11 @@ from __future__ import annotations
 import os
 import random
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 from bill_store import ensure_bill_tables
+from ledger_time import ledger_now, ledger_now_iso
 
 PROJECT_DIR = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_DIR / "data"
@@ -77,7 +78,7 @@ PAYMENT_METHODS = ["零钱", "余额宝", "银行卡(demo)"]
 def make_tx(day_offset: int, hour: int, minute: int, item: tuple, direction: str = "outflow") -> dict:
     merchant, thing, category, platform, (lo, hi) = item
     amount = round(RNG.uniform(lo, hi), 2) if lo != hi else float(lo)
-    paid_at = (datetime.now().replace(hour=hour, minute=minute, second=RNG.randint(0, 59), microsecond=0)
+    paid_at = (ledger_now().replace(hour=hour, minute=minute, second=RNG.randint(0, 59), microsecond=0)
                - timedelta(days=day_offset))
     return {
         "payment_app": RNG.choice(["wechat", "wechat", "alipay"]),
@@ -98,7 +99,7 @@ def make_tx(day_offset: int, hour: int, minute: int, item: tuple, direction: str
 def generate_transactions() -> list[dict]:
     txs: list[dict] = []
     for offset in range(DAYS):
-        date = datetime.now().date() - timedelta(days=offset)
+        date = ledger_now().date() - timedelta(days=offset)
         weekday = date.isoweekday()
 
         if RNG.random() < (0.42 if weekday <= 5 else 0.22):
@@ -141,7 +142,7 @@ def seed(db_path: Path = DB_PATH) -> int:
     ensure_bill_tables(conn)
     conn.execute("delete from transactions where transaction_uid like 'demo-%'")
 
-    now = datetime.now().isoformat(timespec="seconds")
+    now = ledger_now_iso()
     txs = generate_transactions()
     for index, tx in enumerate(txs):
         conn.execute(

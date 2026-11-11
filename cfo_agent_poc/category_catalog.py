@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
-from datetime import datetime
 from pathlib import Path
+
+try:
+    from cfo_agent_poc.ledger_time import ledger_now_iso
+except ModuleNotFoundError:  # Supports direct execution from cfo_agent_poc.
+    from ledger_time import ledger_now_iso
 
 
 MAX_PRIMARY_CATEGORIES = 5
@@ -184,7 +188,7 @@ def ensure_category_tables(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    now = datetime.now().isoformat(timespec="seconds")
+    now = ledger_now_iso()
     conn.execute(
         "insert or ignore into category_catalog_meta (singleton, version, updated_at) values (1, 1, ?)",
         (now,),
@@ -397,7 +401,7 @@ def create_category(db_path: str | Path, payload: dict) -> dict:
     name = _clean_name(payload.get("display_name"))
     icon, color = _validate_appearance(payload.get("icon_key"), payload.get("color_token"))
     category_id = f"custom_{uuid.uuid4().hex[:12]}"
-    now = datetime.now().isoformat(timespec="seconds")
+    now = ledger_now_iso()
     conn = _connect(db_path)
     try:
         ensure_category_tables(conn)
@@ -460,7 +464,7 @@ def patch_category(db_path: str | Path, category_id: str, payload: dict) -> dict
 
         if not updates:
             return next(item for item in _serialize_rows(conn) if item["id"] == category_id)
-        now = datetime.now().isoformat(timespec="seconds")
+        now = ledger_now_iso()
         updates["updated_at"] = now
         try:
             conn.execute(
@@ -506,7 +510,7 @@ def set_primary_order(db_path: str | Path, category_ids: object) -> list[dict]:
                 raise CategoryError("已停用分类不能设为常用。", code="disabled_primary", status=409)
             if RESERVED_CATEGORY_ID in ids:
                 raise CategoryError("“未分类”不能设为常用。", code="reserved_category", status=409)
-        now = datetime.now().isoformat(timespec="seconds")
+        now = ledger_now_iso()
         conn.execute("update category_catalog set primary_order = null")
         for index, category_id in enumerate(ids):
             conn.execute(
@@ -538,7 +542,7 @@ def delete_category(db_path: str | Path, category_id: str) -> dict:
             }
             raise CategoryError("这个分类仍被交易或商户记忆引用，请改为停用。", code="category_in_use", status=409, detail=detail)
         conn.execute("delete from category_catalog where id = ?", (category_id,))
-        now = datetime.now().isoformat(timespec="seconds")
+        now = ledger_now_iso()
         _bump_version(conn, now)
         conn.commit()
         return {"ok": True, "deleted_id": category_id}

@@ -45,6 +45,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from tenancy import Ledger, current_ledger, use_ledger
 from accounts import AccountError, AccountStore, LoginThrottle, default_home
+from ledger_time import ledger_now, ledger_now_iso, ledger_tz_name
 
 DEMO_MODE = os.environ.get("CFO_DEMO") == "1"
 # 演示模式免登录、只读，固定读 cfo_agent_poc 下的演示库（CFO_DB_PATH 可另指）
@@ -476,25 +477,26 @@ def start_of_week(value: datetime) -> datetime:
 
 
 def scoped_transactions(transactions: list[dict], period: str) -> list[dict]:
+    # 与前端 scopedTransactions 同口径：以账本时区的"现在"为锚点，并排除时间晚于现在的交易
+    now = ledger_now()
     dated = [
         (tx, parse_paid_at(tx.get("paid_at")))
         for tx in transactions
         if tx.get("analysis_eligible", is_analysis_eligible(tx))
     ]
-    dates = sorted((paid_at for _, paid_at in dated if paid_at), reverse=True)
-    if not dates:
+    dated = [(tx, paid_at) for tx, paid_at in dated if paid_at and paid_at <= now]
+    if not dated:
         return []
 
-    anchor = dates[0]
     if period == "today":
-        return [tx for tx, paid_at in dated if paid_at and paid_at.date() == anchor.date()]
+        return [tx for tx, paid_at in dated if paid_at.date() == now.date()]
     if period == "week":
-        start = start_of_week(anchor)
+        start = start_of_week(now)
         end = start + timedelta(days=7)
-        return [tx for tx, paid_at in dated if paid_at and start <= paid_at < end]
+        return [tx for tx, paid_at in dated if start <= paid_at < end]
     if period == "month":
-        return [tx for tx, paid_at in dated if paid_at and paid_at.year == anchor.year and paid_at.month == anchor.month]
-    return [tx for tx, paid_at in dated if paid_at]
+        return [tx for tx, paid_at in dated if paid_at.year == now.year and paid_at.month == now.month]
+    return [tx for tx, _ in dated]
 
 
 def amount_value(tx: dict) -> float:
@@ -1150,7 +1152,7 @@ def generate_profile_report(force: bool = False) -> dict:
     if not generated.get("ok"):
         return generated
 
-    generated_at = datetime.now().isoformat(timespec="seconds")
+    generated_at = ledger_now_iso()
     report = {**generated["report"], "generated_at": generated_at}
     conn = sqlite3.connect(ledger_db())
     try:
@@ -1230,7 +1232,8 @@ def custom_period_label(custom_range: dict | None) -> str:
 def compute_period_date_range(period: str, custom_range: dict | None = None) -> dict | None:
     if period == "custom":
         return parse_custom_range(custom_range)
-    now = datetime.now()
+    # 账本时区的"现在"（默认北京时间），与服务器所在时区无关，和前端 getAnchorDate 同口径
+    now = ledger_now()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     if period == "today":
         return {
@@ -1295,7 +1298,9 @@ def get_orientation_context(period: str, budgets: dict | None = None, custom_ran
         cats = []
 
     context: dict = {
-        "today": datetime.now().date().isoformat(),
+        "today": ledger_now().date().isoformat(),
+        # 让模型理解"昨天/今晚"等相对时间时按账本时区算
+        "timezone": ledger_tz_name(),
         "ui_selected_period": period,
         "current_period_label": (
             custom_period_label(custom_range) if period == "custom" else PERIOD_LABELS.get(period, "全部")
@@ -1309,7 +1314,7 @@ def get_orientation_context(period: str, budgets: dict | None = None, custom_ran
     # 复用 _tool_query_spending_summary 保证口径与工具完全一致。
     period_range = compute_period_date_range(period, custom_range)
     if period_range is None:  # "all"、非法自定义区间：回退到最早交易 ~ 明日零点
-        tomorrow = (datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow = (ledger_now().replace(hour=0, minute=0, second=0, microsecond=0)
                     + timedelta(days=1)).isoformat(timespec="seconds")
         period_range = {
             "start": data_range.get("earliest_transaction") or "1970-01-01T00:00:00",
@@ -1559,7 +1564,7 @@ def demo_answer(message: str, period: str, custom_range: dict | None = None) -> 
     """Demo 模式且未配置 LLM Key 时的兜底回答：直接查询演示账本并模板化输出。"""
     period_range = compute_period_date_range(period, custom_range)
     if period_range is None:
-        tomorrow = (datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow = (ledger_now().replace(hour=0, minute=0, second=0, microsecond=0)
                     + timedelta(days=1)).isoformat(timespec="seconds")
         period_range = {"start": "1970-01-01T00:00:00", "end": tomorrow}
     query_args = {"start_date": period_range["start"], "end_date": period_range["end"]}
@@ -1600,7 +1605,7 @@ def demo_answer(message: str, period: str, custom_range: dict | None = None) -> 
         "ok": True,
         "model": "demo",
         "answer": "\n\n".join(lines),
-        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "generated_at": ledger_now_iso(),
     }
 
 
@@ -1706,7 +1711,7 @@ def call_deepseek(
                 "ok": True,
                 "model": data.get("model", DEEPSEEK_MODEL),
                 "answer": answer or "DeepSeek 没有返回可展示内容。",
-                "generated_at": datetime.now().isoformat(timespec="seconds"),
+                "generated_at": ledger_now_iso(),
             }
 
         for tc in assistant_message.get("tool_calls", []):
@@ -1946,7 +1951,7 @@ def update_transaction_fields(transaction_uid: str, fields: dict) -> dict:
         # 只记录真正被改动的字段。表单每次都会把 8 个字段整份提交，
         # 全部当成「人工校正」会让「已校正」标记失去意义。
         changed = {name: value for name, value in cleaned.items() if not _same_field(value, row[name])}
-        reviewed_at = datetime.now().isoformat(timespec="seconds")
+        reviewed_at = ledger_now_iso()
 
         # 打开证据面板对着截图按了保存，本身就是一次人工核对——哪怕一个字都没改。
         # 解析置信低不等于解析错了，「看过，没问题」必须能让这笔不再挂在待核实。
@@ -1990,7 +1995,7 @@ def update_transaction_fields(transaction_uid: str, fields: dict) -> dict:
 
         # 持久层：截图重新解析时靠它回放。没有截图的记录（手工/演示）只改行。
         if capture_hash:
-            now = datetime.now().isoformat(timespec="seconds")
+            now = ledger_now_iso()
             for name, value in changed.items():
                 conn.execute(
                     """

@@ -18,6 +18,12 @@ const compactCurrency = new Intl.NumberFormat("zh-CN", {
   maximumFractionDigits: 0,
 });
 
+/**
+ * 账本时区：账单截图上的时间是北京时间，统计口径也按它算，与浏览器所在时区无关。
+ * 实际值以服务端快照的 ledger_timezone（CFO_LEDGER_TZ）为准，这里只是兜底。
+ */
+const DEFAULT_LEDGER_TIME_ZONE = "Asia/Shanghai";
+
 const paymentAppNames = {
   wechat: "微信",
   alipay: "支付宝",
@@ -158,6 +164,7 @@ let state = {
   categoryStatusKind: "",
   categoryConfirm: null,
   generatedAt: null,
+  ledgerTimeZone: DEFAULT_LEDGER_TIME_ZONE,
   period: "today",
   // 自定义区间 { start, end }，两端都是当天零点，end 为闭区间的最后一天。
   // period === "custom" 时它就是全站唯一的时间尺度。
@@ -517,10 +524,39 @@ function inSameWeek(date, anchor) {
   return date >= start && date < end;
 }
 
+const LEDGER_CLOCK_OPTIONS = {
+  hourCycle: "h23",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+};
+let ledgerClock = { zone: null, formatter: null };
+
+/** 账本时区的时钟格式化器：按时区缓存复用，时区变了才重建。 */
+function ledgerClockFormatter() {
+  const zone = state.ledgerTimeZone || DEFAULT_LEDGER_TIME_ZONE;
+  if (ledgerClock.zone === zone) return ledgerClock.formatter;
+  let formatter;
+  try {
+    formatter = new Intl.DateTimeFormat("en-US", { ...LEDGER_CLOCK_OPTIONS, timeZone: zone });
+  } catch {
+    formatter = new Intl.DateTimeFormat("en-US", { ...LEDGER_CLOCK_OPTIONS, timeZone: DEFAULT_LEDGER_TIME_ZONE });
+  }
+  ledgerClock = { zone, formatter };
+  return formatter;
+}
+
 function getAnchorDate() {
-  // 统计口径以用户当前本地时间为准，不能停在最后一笔交易或快照时间。
-  // 这样跨过 00:00 后，今日会自然切换到新的一天。
-  return new Date();
+  // 统计口径以「账本时区」的当前时间为准（默认北京时间，和支付宝/微信截图一致），
+  // 不能停在最后一笔交易或快照时间，这样跨过 00:00 后，今日会自然切换到新的一天。
+  // 也不能直接用 new Date()：paid_at 是不带时区的北京墙上时间，海外浏览器会把刚发生的
+  // 账单当成"未来交易"过滤掉。返回值和 parseDate(paid_at) 一样，用本地字段承载账本墙上时间。
+  const parts = {};
+  for (const { type, value } of ledgerClockFormatter().formatToParts(new Date())) parts[type] = Number(value);
+  return new Date(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
 }
 
 function startOfDay(date) {
@@ -7286,6 +7322,7 @@ async function loadSnapshot() {
   if (!response.ok) throw new Error(`data.json 加载失败：HTTP ${response.status}`);
   const data = await response.json();
   state.generatedAt = data.generated_at || null;
+  state.ledgerTimeZone = data.ledger_timezone || DEFAULT_LEDGER_TIME_ZONE;
   state.demo = Boolean(data.demo);
   state.classificationPendingCount = Number(data.classification_pending_count || 0);
   state.transactions = (data.transactions || []).sort((a, b) => {

@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
-from datetime import datetime
 from pathlib import Path
 
 try:
     from cfo_agent_poc.category_catalog import CategoryError
+    from cfo_agent_poc.ledger_time import ledger_now_iso
 except ModuleNotFoundError:  # Supports direct execution from cfo_agent_poc.
     from category_catalog import CategoryError
+    from ledger_time import ledger_now_iso
 
 
 # 胶囊要和另外两档挤在同一条轨道里，条数无节制就成了第二个账本目录。
@@ -104,7 +105,7 @@ def create_prompt(db_path: str | Path, payload: dict) -> dict:
     question = _clean_question(payload.get("question"))
     follow_period = 0 if payload.get("follow_period") is False else 1
     prompt_id = f"cp_{uuid.uuid4().hex[:12]}"
-    now = datetime.now().isoformat(timespec="seconds")
+    now = ledger_now_iso()
     conn = _connect(db_path)
     try:
         ensure_prompt_tables(conn)
@@ -154,7 +155,7 @@ def patch_prompt(db_path: str | Path, prompt_id: str, payload: dict) -> dict:
         if not updates:
             return next(item for item in _serialize_rows(conn) if item["id"] == prompt_id)
 
-        now = datetime.now().isoformat(timespec="seconds")
+        now = ledger_now_iso()
         updates["updated_at"] = now
         assignments = ", ".join(f"{key} = ?" for key in updates)
         try:
@@ -205,7 +206,7 @@ def set_prompt_order(db_path: str | Path, prompt_ids: object) -> list[dict]:
         existing = [row[0] for row in conn.execute("select id from custom_prompts").fetchall()]
         if set(ids) != set(existing):
             raise PromptError("顺序表和现有的常问对不上，请刷新后再试。", code="order_mismatch", status=409)
-        now = datetime.now().isoformat(timespec="seconds")
+        now = ledger_now_iso()
         for index, prompt_id in enumerate(ids):
             conn.execute(
                 "update custom_prompts set sort_order = ?, updated_at = ? where id = ?",

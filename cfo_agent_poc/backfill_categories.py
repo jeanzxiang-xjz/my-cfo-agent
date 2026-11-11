@@ -19,6 +19,7 @@ try:
         parse_bill_text,
         remember_merchant_classification,
     )
+    from cfo_agent_poc.ledger_time import ledger_now_iso
 except ModuleNotFoundError:  # Supports direct execution from cfo_agent_poc.
     from bill_store import (
         APP_DB,
@@ -31,6 +32,7 @@ except ModuleNotFoundError:  # Supports direct execution from cfo_agent_poc.
         parse_bill_text,
         remember_merchant_classification,
     )
+    from ledger_time import ledger_now_iso
 
 
 FACT_FIELDS = (
@@ -132,7 +134,7 @@ def _write_overrides(
     raw_capture_hash: str,
     overrides: dict[str, str | None],
 ) -> None:
-    now = datetime.now().isoformat(timespec="seconds")
+    now = ledger_now_iso()
     conn.executemany(
         """
         insert into transaction_overrides (raw_capture_hash, field, value, created_at)

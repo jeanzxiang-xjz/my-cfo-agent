@@ -21,9 +21,11 @@ try:
         detect_category_and_thing,
     )
     from cfo_agent_poc.category_catalog import ensure_category_tables, is_enabled_category
+    from cfo_agent_poc.ledger_time import ledger_now_iso
 except ModuleNotFoundError:  # Supports direct execution as cfo_agent_poc/bill_store.py.
     from bill_classifier import ClassificationResult, LOCAL_CATEGORY_RULES, classify_locally, detect_category_and_thing
     from category_catalog import ensure_category_tables, is_enabled_category
+    from ledger_time import ledger_now_iso
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -374,7 +376,7 @@ def remember_merchant_alias(conn: sqlite3.Connection, *, alias: str | None, merc
         values (?, ?, ?, ?)
         on conflict(alias_key) do update set merchant = excluded.merchant, updated_at = excluded.updated_at
         """,
-        (key, alias, merchant, datetime.now().isoformat(timespec="seconds")),
+        (key, alias, merchant, ledger_now_iso()),
     )
     return True
 
@@ -424,7 +426,7 @@ def remember_merchant_classification(
             source = excluded.source,
             updated_at = excluded.updated_at
         """,
-        (key, merchant, category, thing, confidence, source, datetime.now().isoformat(timespec="seconds")),
+        (key, merchant, category, thing, confidence, source, ledger_now_iso()),
     )
     return True
 
@@ -1239,7 +1241,7 @@ def store_bill_capture(
     # 原始捕获成为身份来源；同一捕获重复处理仍然幂等，不同截图则都能追溯。
     if not parsed.transaction_id:
         parsed.transaction_uid = f"capture_{capture_hash[:24]}"
-    now = datetime.now().isoformat(timespec="seconds")
+    now = ledger_now_iso()
 
     conn = connect(db_path)
     conn.execute(

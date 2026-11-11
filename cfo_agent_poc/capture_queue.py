@@ -17,12 +17,12 @@ import hashlib
 import sqlite3
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
-from datetime import datetime
 from pathlib import Path
 from typing import Callable, Iterable
 
 import evidence_image
 import process_bill_image
+from ledger_time import ledger_now_iso
 from tenancy import Ledger
 
 
@@ -61,7 +61,7 @@ def sniff_image(data: bytes) -> str:
 
 
 def _now() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    return ledger_now_iso()
 
 
 def _connect(ledger: Ledger) -> sqlite3.Connection:

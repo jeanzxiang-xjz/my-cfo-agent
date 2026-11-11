@@ -3,11 +3,16 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
 from datetime import datetime
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from ledger_time import ledger_now_iso, ledger_tz_name
 DB_PATH = Path(os.environ.get("CFO_DB_PATH") or ROOT / "data" / "cfo.sqlite")
 DEMO_MODE = os.environ.get("CFO_DEMO") == "1"
 OUT_PATH = Path(__file__).resolve().parent / "data.json"
@@ -124,7 +129,9 @@ def build_payload(db_path: Path | str | None = None) -> dict:
         transactions.append(record)
 
     return {
-        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "generated_at": ledger_now_iso(),
+        # 前端用它把"现在"换算到账本时区，不再依赖浏览器所在时区
+        "ledger_timezone": ledger_tz_name(),
         "demo": DEMO_MODE and selected_db.name == "cfo-demo.sqlite",
         "classification_pending_count": sum(
             1 for row in transactions if row["classification_status"] == "pending"
