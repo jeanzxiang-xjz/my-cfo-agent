@@ -2377,6 +2377,7 @@ body.chat-expanded-open {
 
 /* 形状沿用顶栏那只分段控件（.period-control），只是换成对话面板的深色。 */
 .prompt-tabs {
+  position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -2388,8 +2389,23 @@ body.chat-expanded-open {
   background: var(--chat-input);
 }
 
+/* 滑块：和账本分类筛选的 .filter-thumb 同一套手法，位置与宽度由 legacy-controller.js 的
+   movePromptThumb() 写入，切档时从旧位置一路滑过去。选中态的底色由它承担，不再画在 tab 自己身上。 */
+.prompt-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  width: 0;
+  border-radius: var(--r-sm);
+  background: var(--chat-surface);
+  box-shadow: var(--edge);
+  pointer-events: none;
+}
+
 .prompt-tab {
   position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -2415,9 +2431,7 @@ body.chat-expanded-open {
 }
 
 .prompt-tab.is-active {
-  background: var(--chat-surface);
   color: var(--chat-text);
-  box-shadow: var(--edge);
 }
 
 /* 「猜你想问」是唯一带智能感的一档，用玉色闪光标出来；另外两档保持中性。 */

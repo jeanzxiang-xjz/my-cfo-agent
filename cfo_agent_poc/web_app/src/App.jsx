@@ -359,6 +359,7 @@ function OverviewHero() {
               所以三类不并排、不换行——任何视口下都恒定一行，窄屏由轨道自己横向滚。 */}
           <div className="prompt-rail">
             <div className="prompt-tabs" role="tablist" aria-label="快捷提问分类">
+              <span className="prompt-thumb" aria-hidden="true" />
               <button
                 id="promptTabGuess"
                 className="prompt-tab is-guess"

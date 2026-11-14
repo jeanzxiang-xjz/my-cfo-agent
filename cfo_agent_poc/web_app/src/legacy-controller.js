@@ -1313,6 +1313,7 @@ function renderPromptRail() {
   const previousTrack = document.querySelector(".prompt-track:not([hidden])");
   const previousWidth = previousTrack ? previousTrack.getBoundingClientRect().width : 0;
   const previousText = previousTrack ? previousTrack.textContent : "";
+  const previousThumb = capturePromptThumb();
   const scope = promptScopeSignature();
   // 首次渲染不算「变了」：那是入场，不是改口径。
   const firstRender = state.promptRailScope === null;
@@ -1346,6 +1347,7 @@ function renderPromptRail() {
   const manage = $("managePrompts");
   if (manage) manage.hidden = active !== "mine" || Boolean(state.demo);
 
+  movePromptThumb({ from: firstRender ? null : previousThumb });
   syncTrackOverflow();
 
   /*
@@ -1375,6 +1377,46 @@ function syncTrackOverflow() {
   const track = document.querySelector(`.prompt-track[data-track="${state.promptTabActive}"]`);
   if (!track) return;
   track.classList.toggle("is-scrollable", track.scrollWidth - track.clientWidth > 4);
+}
+
+/*
+ * 分段滑块：和账本分类筛选的 moveFilterThumb 同一套——位置、宽度一起补间，时长与曲线共用
+ * FILTER_MOTION_*，两处的「水滴」手感才是一个。tab 本身不会被重建，所以只需要在切档前
+ * 记下滑块当前的视觉位置（含正在进行的位移，连点时能从半路接着滑）。
+ */
+function capturePromptThumb() {
+  const tabs = document.querySelector(".prompt-tabs");
+  const thumb = tabs?.querySelector(".prompt-thumb");
+  if (!tabs || !thumb) return null;
+  const rect = thumb.getBoundingClientRect();
+  if (!rect.width) return null;
+  return { x: rect.left - tabs.getBoundingClientRect().left - tabs.clientLeft, width: rect.width };
+}
+
+/** 把滑块放到选中的那档下面；传入 from 时从那个位置补间过去。 */
+function movePromptThumb({ from = null } = {}) {
+  const tabs = document.querySelector(".prompt-tabs");
+  const thumb = tabs?.querySelector(".prompt-thumb");
+  const active = tabs?.querySelector(".prompt-tab.is-active");
+  if (!thumb) return;
+  thumb.hidden = !active || active.hidden;
+  if (thumb.hidden) return;
+  // 滑块静态位置是 left:0，offsetLeft 已经是相对 .prompt-tabs 内边距盒的，直接用。
+  const x = active.offsetLeft;
+  const width = active.offsetWidth;
+  thumb.style.width = `${width}px`;
+  thumb.style.transform = `translateX(${x}px)`;
+  // 某一档正在长出 / 收起时（squeezeTab），布局每帧都在变，补间会追着一个移动的目标；
+  // 这时交给 ResizeObserver 逐帧跟随，不另起动画。
+  if (!from || prefersReducedMotion() || tabs.querySelector("[data-squeeze]")) return;
+  if (Math.abs(from.x - x) < 0.5 && Math.abs(from.width - width) < 0.5) return;
+  thumb.animate(
+    [
+      { transform: `translateX(${from.x}px)`, width: `${from.width}px` },
+      { transform: `translateX(${x}px)`, width: `${width}px` },
+    ],
+    { duration: FILTER_MOTION_MS, easing: FILTER_MOTION_EASE },
+  );
 }
 
 function selectPromptTab(tab, { focus = false } = {}) {
@@ -7211,6 +7253,11 @@ function wireInteractions() {
     if (!button || button.disabled) return;
     submitQuestion(button.dataset.question, { scoped: button.dataset.questionScope !== "free" });
   });
+
+  // 分段自己的宽度会变（窄屏收成图标、「猜你想问」长出 / 收起、字体晚到），滑块得跟着贴住选中档。
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(() => movePromptThumb()).observe(document.querySelector(".prompt-tabs"));
+  }
 
   // tablist 的标准键盘行为：左右在三档间走，Home/End 跳到两端。
   document.querySelector(".prompt-tabs").addEventListener("keydown", (event) => {
